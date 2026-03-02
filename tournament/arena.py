@@ -43,6 +43,8 @@ class Arena:
                 # Generate a new architecture
                 new_architecture = generator.generate(self.architecture_size)
                 architectures.append(new_architecture)
+                
+            for architecture in architectures:
                 scores.append(0)
 
             # architectures is filled, now we evaluate them two by two (every possible pair)
@@ -80,8 +82,8 @@ class Arena:
                     test_target_j = output_i[0][train_size:].to(device)
 
                     # make new executors and fit them
-                    learner_i = Executor(architectures[i]).to(device)
-                    learner_j = Executor(architectures[j]).to(device)
+                    learner_i = Executor(copy.deepcopy(architectures[i])).to(device)
+                    learner_j = Executor(copy.deepcopy(architectures[j])).to(device)
                     learner_i.fit(train_input, train_target_i.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=16, patience = 8, min_delta = 1e-7, cpu = False)
                     learner_j.fit(train_input, train_target_j.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=16, patience = 8, min_delta = 1e-7, cpu = False)
 
@@ -105,7 +107,8 @@ class Arena:
                         else:
                             scores[j] = scores[j] + 1
 
-                        del executors[0], executors[1], learner_i, learner_j
+                        del executors[0]
+                        del executors[0], learner_i, learner_j #because executors[0] is our previous executors[1]
                         torch.cuda.empty_cache()
                         if self.verbose:
                             print(f"Architecture {i} of round {n_fight} :")
