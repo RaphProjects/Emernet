@@ -80,8 +80,8 @@ class Arena:
                     test_target_j = output_i[0][train_size:].to(device)
 
                     # make new executors and fit them
-                    learner_i = Executor(architectures[i]).to(device)
-                    learner_j = Executor(architectures[j]).to(device)
+                    learner_i = Executor(copy.deepcopy(architectures[i])).to(device)
+                    learner_j = Executor(copy.deepcopy(architectures[j])).to(device)
                     learner_i.fit(train_input, train_target_i.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=16, patience = 8, min_delta = 1e-7, cpu = False)
                     learner_j.fit(train_input, train_target_j.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=16, patience = 8, min_delta = 1e-7, cpu = False)
 
@@ -105,7 +105,8 @@ class Arena:
                         else:
                             scores[j] = scores[j] + 1
 
-                        del executors[0], executors[1], learner_i, learner_j
+                        del executors[0]
+                        del executors[0], learner_i, learner_j # because executor [0] is what was executor[1] before
                         torch.cuda.empty_cache()
                         if self.verbose:
                             print(f"Architecture {i} of round {n_fight} :")
@@ -115,7 +116,7 @@ class Arena:
                             print(f"Test loss for executor {i}: {test_loss_i}")
                             print(f"Test loss for executor {j}: {test_loss_j}")
             # Fight loop
-            current_best = architectures[scores.index(max(scores))]        
+            current_best = copy.deepcopy(architectures[scores.index(max(scores))])
                         
 
 
