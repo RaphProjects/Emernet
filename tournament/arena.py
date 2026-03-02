@@ -43,6 +43,8 @@ class Arena:
                 # Generate a new architecture
                 new_architecture = generator.generate(self.architecture_size)
                 architectures.append(new_architecture)
+                
+            for architecture in architectures:
                 scores.append(0)
 
             # architectures is filled, now we evaluate them two by two (every possible pair)
@@ -106,7 +108,7 @@ class Arena:
                             scores[j] = scores[j] + 1
 
                         del executors[0]
-                        del executors[0], learner_i, learner_j # because executor [0] is what was executor[1] before
+                        del executors[0], learner_i, learner_j #because executors[0] is our previous executors[1]
                         torch.cuda.empty_cache()
                         if self.verbose:
                             print(f"Architecture {i} of round {n_fight} :")
