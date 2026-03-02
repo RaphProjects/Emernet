@@ -88,3 +88,4 @@ class Architecture(networkx.DiGraph):
         for node in self.nodes:
             if self.nodes[node]['module'].module_type == ModuleType.LEARNABLE:
                 count += self.nodes[node]['module'].get_n_parameters()
+        return count

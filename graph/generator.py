@@ -15,10 +15,24 @@ class Generator:
         self.generation_type = generation_type
 
     def generate(self, n_nodes=16)->Architecture:
+        generated = False
         if self.generation_type == "dense":
-            return self.generate_dense(n_nodes)
+            while not generated:
+                try:
+                    generation = self.generate_dense(n_nodes)
+                    generated = True
+                except Exception as e:
+                    pass
+            return generation
+        
         elif self.generation_type == "agnostic":
-            return self.generate_order_agnostic(n_nodes)
+            while not generated:
+                try:
+                    generation = self.generate_order_agnostic(n_nodes)
+                    generated = True
+                except Exception as e:
+                    pass
+            return generation
         else:
             raise Exception(f"Unknown generation type {self.generation_type}")
 

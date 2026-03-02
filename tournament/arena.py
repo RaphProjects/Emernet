@@ -1,3 +1,6 @@
+import copy
+import math
+
 import torch
 import random
 import numpy as np
@@ -26,28 +29,33 @@ class Arena:
 
     def start(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        architectures = []
-        executors = []
+        
         # Generate the first architecture
         generator = Generator(generation_type=self.generation_type)
-        firstarch = generator.generate(self.architecture_size)
-        architectures.append(firstarch)
+        current_best = generator.generate(self.architecture_size)
+        
         for n_fight in range(self.n_fights):
+            architectures = []
+            architectures.append(current_best)
+            scores = []
+            # arch 1, executor 0
             for gen_architecture in range(self.arena_contestants-1):
                 # Generate a new architecture
                 new_architecture = generator.generate(self.architecture_size)
                 architectures.append(new_architecture)
-                print(f"New architecture: {architectures[n_fight+gen_architecture+1]}")
-
-            for arch in architectures:
-                        executors.append(Executor(arch).to(device))
+                scores.append(0)
 
             # architectures is filled, now we evaluate them two by two (every possible pair)
-            for i in range(self.arena_contestants-1): # TODO : create new executors for each pair
+            for i in range(self.arena_contestants-1): 
                 for j in range(i+1, self.arena_contestants):
+                    print(f"Generating executors for architectures {i} and {j}")
+                    executors = []
+                    # create the executors  
+                    executors.append(Executor(copy.deepcopy(architectures[i])).to(device))
+                    executors.append(Executor(copy.deepcopy(architectures[j])).to(device))
                     # Randomize the weights of the architectures
-                    executors[i].randomize_weights()
-                    executors[j].randomize_weights()
+                    executors[0].randomize_weights()
+                    executors[1].randomize_weights()
 
                     # create the input
                     train_size = int(self.dataset_size*self.train_test_split)
@@ -60,8 +68,10 @@ class Arena:
 
 
                     # generate the outputs for each executor
-                    output_i = executors[i].forward(input)
-                    output_j = executors[j].forward(input)
+                    print(f"len of executors : {len(executors)}")
+                    print(f"len of architectures : {len(architectures)}")
+                    output_i = executors[0].forward(input)
+                    output_j = executors[1].forward(input)
 
                     train_target_i = output_j[0][:train_size].to(device)
                     train_target_j = output_i[0][:train_size].to(device)
@@ -81,14 +91,34 @@ class Arena:
                         
                         test_loss_i = torch.nn.functional.mse_loss(pred_i, test_target_i).item()
                         test_loss_j = torch.nn.functional.mse_loss(pred_j, test_target_j).item()
+                        
+                        # compute the scores
+                        K_i = math.log2(architectures[i].parameter_count())
+                        K_j = math.log2(architectures[j].parameter_count())
+                        deltaK_i = (K_i/K_j) + math.exp(-K_i*K_j)
+                        deltaK_j = (K_j/K_i) + math.exp(-K_j*K_i)
+                        score_i = test_loss_i*deltaK_i
+                        score_j = test_loss_j*deltaK_j
 
+                        if score_i > score_j:
+                            scores[i] = scores[i] + 1
+                        else:
+                            scores[j] = scores[j] + 1
+
+                        del executors[0], executors[1], learner_i, learner_j
+                        torch.cuda.empty_cache()
                         if self.verbose:
-                            print(f"Architecture I{n_fight} :")
+                            print(f"Architecture {i} of round {n_fight} :")
                             architectures[i].describe()
-                            print(f"Architecture J{n_fight} :")
+                            print(f"Architecture {j} of round {n_fight} :")
                             architectures[j].describe()
                             print(f"Test loss for executor {i}: {test_loss_i}")
                             print(f"Test loss for executor {j}: {test_loss_j}")
+            # Fight loop
+            current_best = architectures[scores.index(max(scores))]        
+                        
+
+
 
                     
                     
