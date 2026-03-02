@@ -1,0 +1,11 @@
+{
+    "powermode.enabled": false,
+    "powermode.combo.location": "statusbar",
+    "powermode.combo.counterSize": 2,
+    "powermode.combo.threshold": 10,
+    "powermode.combo.timeout": 5,
+    "powermode.explosions.enabled": true,
+    "powermode.explosions.duration": 800,
+    "powermode.explosions.frequency": 3,
+    "powermode.explosions.maxExplosions": 2
+}
