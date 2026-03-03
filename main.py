@@ -109,5 +109,5 @@ executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=20, b
 
 
 
-arena = Arena(n_fights=12, architecture_size=12, arena_contestants=3, dataset_size = 512, train_test_split= 0.7, generation_type="agnostic", verbose=False, report=False)
+arena = Arena(n_fights=24, architecture_size=12, arena_contestants=3, dataset_size = 512, train_test_split= 0.7, generation_type="agnostic", verbose=False, report=False)
 arena.start()
