@@ -70,8 +70,6 @@ class Arena:
 
 
                     # generate the outputs for each executor
-                    print(f"len of executors : {len(executors)}")
-                    print(f"len of architectures : {len(architectures)}")
                     output_i = executors[0].forward(input)
                     output_j = executors[1].forward(input)
 
@@ -84,8 +82,8 @@ class Arena:
                     # make new executors and fit them
                     learner_i = Executor(copy.deepcopy(architectures[i])).to(device)
                     learner_j = Executor(copy.deepcopy(architectures[j])).to(device)
-                    learner_i.fit(train_input, train_target_i.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=16, patience = 8, min_delta = 1e-7, cpu = False)
-                    learner_j.fit(train_input, train_target_j.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=16, patience = 8, min_delta = 1e-7, cpu = False)
+                    learner_i.fit(train_input, train_target_i.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,2048), patience = 8, min_delta = 1e-7, cpu = False)
+                    learner_j.fit(train_input, train_target_j.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,2048), patience = 8, min_delta = 1e-7, cpu = False)
 
                     with torch.no_grad():
                         pred_i = learner_i.forward(test_input)[0]
@@ -119,7 +117,9 @@ class Arena:
                             print(f"Test loss for executor {j}: {test_loss_j}")
             # Fight loop
             current_best = copy.deepcopy(architectures[scores.index(max(scores))])
-                        
+        print(f"Final scores: {scores}")
+        print(f"Final architecture: ")
+        current_best.describe()
 
 
 
