@@ -100,8 +100,8 @@ class Arena:
                         test_loss_j = torch.nn.functional.mse_loss(pred_j, test_target_j).item()
                         
                         # compute the scores
-                        K_i = math.log2(architectures[i].parameter_count())
-                        K_j = math.log2(architectures[j].parameter_count())
+                        K_i = math.log2(max(2,architectures[i].parameter_count()))
+                        K_j = math.log2(max(2,architectures[j].parameter_count()))
                         deltaK_i = (K_i/K_j) + math.exp(-K_i*K_j)
                         deltaK_j = (K_j/K_i) + math.exp(-K_j*K_i)
                         score_i = test_loss_i*deltaK_i

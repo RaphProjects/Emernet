@@ -115,4 +115,4 @@ for i in range(50):
     if winner_scores.index(max(winner_scores)) == 0:
         n_winner_is_the_last += 1
 
-print(f"Number of times the winner is the last one (measures consistance): {n_winner_is_the_last} out of 50")
+print(f"Number of times the winner is the last one (measures consistance): {n_winner_is_the_last*2}%")
