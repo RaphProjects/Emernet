@@ -107,7 +107,12 @@ executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=20, b
 #executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.01, max_iter=100, batch_size=8, patience = 10, min_delta = 1e-7, cpu = True)
 '''
 
+n_winner_is_the_last = 0
+for i in range(50):
+    arena = Arena(n_fights=16, architecture_size=12, arena_contestants=3, dataset_size = 512, train_test_split= 0.7, generation_type="agnostic", verbose=False, report=False)
+    winner_scores, winners = arena.start()
+    winner_scores.reverse()
+    if winner_scores.index(max(winner_scores)) == 0:
+        n_winner_is_the_last += 1
 
-
-arena = Arena(n_fights=24, architecture_size=12, arena_contestants=3, dataset_size = 512, train_test_split= 0.7, generation_type="agnostic", verbose=False, report=False)
-arena.start()
+print(f"Number of times the winner is the last one (measures consistance): {n_winner_is_the_last} out of 50")

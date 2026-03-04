@@ -83,6 +83,18 @@ class Architecture(networkx.DiGraph):
             for successor in list(self.successors(node)):
                 print(f"\t{successor}")
     
+
+    def description(self):
+        desc = ""
+        for node in self.nodes:
+            desc += f"Node {node} is of type {self.nodes[node]['module'].module_type}"
+            desc+=f"It has {len(list(self.predecessors(node)))} predecessors"
+            desc+="Its direct successors are:"
+            for successor in list(self.successors(node)):
+                desc+=f"\t{successor}"
+        return desc
+
+
     def parameter_count(self):
         count = 0
         for node in self.nodes:

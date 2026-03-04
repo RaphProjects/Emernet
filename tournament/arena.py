@@ -29,7 +29,14 @@ class Arena:
 
     def start(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if device=='cuda':
+            max_batch_size = 2048
+        else:
+            max_batch_size = 32
         
+        winners = []
+        winner_scores = []
+        current_winner_id = -1
         # Generate the first architecture
         generator = Generator(generation_type=self.generation_type)
         current_best = generator.generate(self.architecture_size)
@@ -116,10 +123,20 @@ class Arena:
                             print(f"Test loss for executor {i}: {test_loss_i}")
                             print(f"Test loss for executor {j}: {test_loss_j}")
             # Fight loop
-            current_best = copy.deepcopy(architectures[scores.index(max(scores))])
-        print(f"Final scores: {scores}")
-        print(f"Final architecture: ")
-        current_best.describe()
+            max_score_id = scores.index(max(scores))
+            if max_score_id == 0: # because the first architecture is always the previous best
+                winner_scores[current_winner_id] += scores[max_score_id]
+            else:
+                winners.append(architectures[max_score_id])
+                winner_scores.append(scores[max_score_id])
+                current_winner_id += 1
+            current_best = copy.deepcopy(architectures[max_score_id])
+        if self.verbose:
+            print(f"Winners Scores: {winners}")
+            print(f"Final scores: {scores}")
+            print(f"Final architecture: ")
+            current_best.describe()
+        return winner_scores, winners
 
 
 
