@@ -1,5 +1,6 @@
 import networkx
 import torch
+import pickle
 
 from modules.base import MappingType
 from modules.base import ModuleType
@@ -15,6 +16,7 @@ class Architecture(networkx.DiGraph):
     def append_node(self,module,):
         super().add_node(len(self.nodes),module=module)
         return len(self.nodes)-1
+    
 
     def add_edge(self, source_id, target_id):
         super().add_edge(source_id, target_id)
@@ -101,3 +103,23 @@ class Architecture(networkx.DiGraph):
             if self.nodes[node]['module'].module_type == ModuleType.LEARNABLE:
                 count += self.nodes[node]['module'].get_n_parameters()
         return count
+    
+    def reset_state(self):
+        for node in self.nodes:
+            self.nodes[node]['module'].reset_state()
+    
+    def save(self,filepath:str):
+        """Saves the architecture to a file using pickle."""
+        self.reset_state()
+
+        with open(filepath, 'wb') as f:
+            pickle.dump(self, f)
+        print(f"Architecture saved to {filepath}")
+
+    @staticmethod
+    def load(filepath: str):
+        """Loads an architecture from a file."""
+        with open(filepath, 'rb') as f:
+            arch = pickle.load(f)
+        print(f"Architecture loaded successfully from {filepath}")
+        return arch

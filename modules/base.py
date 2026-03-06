@@ -41,4 +41,5 @@ class Module(ABC,torch.nn.Module):
     def random_parameters():
         return []
         
-
+    def reset_state(self):
+        pass

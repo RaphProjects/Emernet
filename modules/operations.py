@@ -28,6 +28,9 @@ class Add(Module):
     def mapping_type(self) -> MappingType:
         return MappingType.REDUCER
 
+    def reset_state(self):
+        self.p_projections = None
+        self.f_projections = None
 
     def forward(self, inputTensors):
         
@@ -80,6 +83,8 @@ class MatMul(Module):
     def mapping_type(self) -> MappingType:
         return MappingType.REDUCER
 
+    def reset_state(self):
+        self.projections = None
     
     def forward(self, inputTensors):
         projected_tensors = inputTensors
