@@ -29,14 +29,14 @@ class Arena:
 
     def start(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if device=='cuda':
+        if device.type=='cuda':
             max_batch_size = 2048
         else:
             max_batch_size = 32
         
         winners = []
-        winner_scores = []
-        current_winner_id = -1
+        winner_scores = [0]
+        current_winner_id = 0
         # Generate the first architecture
         generator = Generator(generation_type=self.generation_type)
         current_best = generator.generate(self.architecture_size)
