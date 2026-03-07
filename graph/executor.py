@@ -128,7 +128,7 @@ class Executor(torch.nn.Module):
             device = torch.device('cuda' if torch.cuda.is_available() and not cpu else 'cpu')
         executor = executor.to(device)
         
-        executor.set_Output_Adapter(input[:batch_size].to(device), target.shape)
+        executor.set_Output_Adapter(input[:batch_size].to(device), target.shape, force=True)
         optimizer = torch.optim.Adam(executor.parameters(), lr=lr) 
         best_loss = float('inf')
 

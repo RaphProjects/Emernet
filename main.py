@@ -64,7 +64,7 @@ def twolayersMLP():
     architecture.append_node(Add())
     architecture.append_node(Activation())
 
-    architecture.append_node(LearnableParameter((1,8,4)))
+    architecture.append_node(LearnableParameter((1,13,4)))
     architecture.append_node(LearnableParameter((1,1,4)))
     architecture.append_node(MatMul())
     architecture.append_node(Add())
@@ -108,11 +108,10 @@ executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=20, b
 '''
 
 
-arena = Arena(n_fights=6, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+arena = Arena(n_fights=8, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
 winner_scores, winners = arena.start()
-print(f"Winner scores: {winner_scores}")
-print(f"Winners: {winners}")
-winners[-1].save("c:/Users/rapha/Emernet/winner.pkl")
-winnerArch = Architecture.load("c:/Users/rapha/Emernet/winner.pkl")
-winnerArch.describe()
+
+WinArch = winners[-1]
+arch_scores, n_wins = arena.test(WinArch,n_test=5)
+print(f"Winner winrate: {n_wins/5}")
 

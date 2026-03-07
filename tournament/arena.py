@@ -26,6 +26,69 @@ class Arena:
         self.report = report
     
 
+    def get_scores(self, arch_1, arch_2, input = None):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if device.type=='cuda':
+            max_batch_size = 2048
+        else:
+            max_batch_size = 32
+        executors = []
+        # create the executors  
+        executors.append(Executor(copy.deepcopy(arch_1)).to(device))
+        executors.append(Executor(copy.deepcopy(arch_2)).to(device))
+        # Randomize the weights of the architectures
+        executors[0].randomize_weights()
+        executors[1].randomize_weights()
+
+        if input is None:
+            # create the input
+            train_size = int(self.dataset_size*self.train_test_split)
+
+            input_p = random.randint(1,16)
+            input_f = random.randint(1,16)
+            input = torch.randn(self.dataset_size, input_p, input_f).to(device)
+
+        train_size = int(self.dataset_size*self.train_test_split)
+        train_input = input[:train_size]
+        test_input = input[train_size:]
+
+        # generate the outputs for each executor
+        output_1 = executors[0].forward(input)
+        output_2 = executors[1].forward(input)
+
+        train_target_1 = output_2[0][:train_size].to(device)
+        train_target_2 = output_1[0][:train_size].to(device)
+
+        test_target_1 = output_2[0][train_size:].to(device)
+        test_target_2 = output_1[0][train_size:].to(device)
+
+        # make new executors and fit them
+        learner_1 = Executor(copy.deepcopy(arch_1)).to(device)
+        learner_2 = Executor(copy.deepcopy(arch_2)).to(device)
+        learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
+        learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
+
+        with torch.no_grad():
+            pred_1 = learner_1.forward(test_input)[0]
+            pred_2 = learner_2.forward(test_input)[0]
+            
+            test_loss_1 = torch.nn.functional.mse_loss(pred_1, test_target_1).item()
+            test_loss_2 = torch.nn.functional.mse_loss(pred_2, test_target_2).item()
+            
+            # compute the scores
+            K_1 = math.log2(max(2,arch_1.parameter_count()))
+            K_2 = math.log2(max(2,arch_2.parameter_count()))
+            deltaK_1 = (K_1/K_2) + math.exp(-K_1*K_2)
+            deltaK_2 = (K_2/K_1) + math.exp(-K_2*K_1)
+            score_1 = (1/(test_loss_1*deltaK_1))**0.5
+            score_2 = (1/(test_loss_2*deltaK_2))**0.5
+
+            del executors[0]
+            del executors[0], learner_1, learner_2 #because executors[0] is our previous executors[1] (executors[0] was deleted, which made executors[1] become executors[0]))
+            torch.cuda.empty_cache()
+
+            return score_1, score_2
+
 
     def start(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -40,7 +103,7 @@ class Arena:
         # Generate the first architecture
         generator = Generator(generation_type=self.generation_type)
         current_best = generator.generate(self.architecture_size)
-        
+        winners.append(copy.deepcopy(current_best))
         for n_fight in range(self.n_fights):
             print(f"fight n°{n_fight}")
             architectures = []
@@ -58,83 +121,29 @@ class Arena:
             # architectures is filled, now we evaluate them two by two (every possible pair)
             for i in range(self.arena_contestants-1): 
                 for j in range(i+1, self.arena_contestants):
+                    score_i, score_j = self.get_scores(architectures[i], architectures[j])
+                    if score_j < score_i:
+                        scores[i] = scores[i] + 1
+                    else:
+                        scores[j] = scores[j] + 1
+                    '''
                     if self.verbose:
-                        print(f"Generating executors for architectures {i} and {j}")
-                    executors = []
-                    # create the executors  
-                    executors.append(Executor(copy.deepcopy(architectures[i])).to(device))
-                    executors.append(Executor(copy.deepcopy(architectures[j])).to(device))
-                    # Randomize the weights of the architectures
-                    executors[0].randomize_weights()
-                    executors[1].randomize_weights()
-
-                    # create the input
-                    train_size = int(self.dataset_size*self.train_test_split)
-
-                    input_p = random.randint(1,16)
-                    input_f = random.randint(1,16)
-                    input = torch.randn(self.dataset_size, input_p, input_f).to(device)
-                    train_input = input[:train_size]
-                    test_input = input[train_size:]
-
-
-                    # generate the outputs for each executor
-                    output_i = executors[0].forward(input)
-                    output_j = executors[1].forward(input)
-
-                    train_target_i = output_j[0][:train_size].to(device)
-                    train_target_j = output_i[0][:train_size].to(device)
-
-                    test_target_i = output_j[0][train_size:].to(device)
-                    test_target_j = output_i[0][train_size:].to(device)
-
-                    # make new executors and fit them
-                    learner_i = Executor(copy.deepcopy(architectures[i])).to(device)
-                    learner_j = Executor(copy.deepcopy(architectures[j])).to(device)
-                    learner_i.fit(train_input, train_target_i.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
-                    learner_j.fit(train_input, train_target_j.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
-
-                    with torch.no_grad():
-                        pred_i = learner_i.forward(test_input)[0]
-                        pred_j = learner_j.forward(test_input)[0]
-                        
-                        test_loss_i = torch.nn.functional.mse_loss(pred_i, test_target_i).item()
-                        test_loss_j = torch.nn.functional.mse_loss(pred_j, test_target_j).item()
-                        
-                        # compute the scores
-                        K_i = math.log2(max(2,architectures[i].parameter_count()))
-                        K_j = math.log2(max(2,architectures[j].parameter_count()))
-                        deltaK_i = (K_i/K_j) + math.exp(-K_i*K_j)
-                        deltaK_j = (K_j/K_i) + math.exp(-K_j*K_i)
-                        score_i = test_loss_i*deltaK_i
-                        score_j = test_loss_j*deltaK_j
-
-                        if score_i > score_j:
-                            scores[i] = scores[i] + 1
-                        else:
-                            scores[j] = scores[j] + 1
-
-                        del executors[0]
-                        del executors[0], learner_i, learner_j # because executors[0] is our previous executors[1]
-                        torch.cuda.empty_cache()
-                        '''
-                        if self.verbose:
-                            print(f"Architecture {i} of round {n_fight} :")
-                            architectures[i].describe()
-                            print(f"Architecture {j} of round {n_fight} :")
-                            architectures[j].describe()
-                            print(f"Test loss for executor {i}: {test_loss_i}")
-                            print(f"Test loss for executor {j}: {test_loss_j}")
-                        '''
+                        print(f"Architecture {i} of round {n_fight} :")
+                        architectures[i].describe()
+                        print(f"Architecture {j} of round {n_fight} :")
+                        architectures[j].describe()
+                        print(f"Test loss for executor {i}: {test_loss_i}")
+                        print(f"Test loss for executor {j}: {test_loss_j}")
+                    '''
             # Fight loop
             max_score_id = scores.index(max(scores))
             if max_score_id == 0: # because the first architecture is always the previous best
                 winner_scores[current_winner_id] += scores[max_score_id]
             else:
-                winners.append(architectures[max_score_id])
+                winners.append(copy.deepcopy(architectures[max_score_id]))
                 winner_scores.append(scores[max_score_id])
                 current_winner_id += 1
-            current_best = copy.deepcopy(architectures[max_score_id])
+                current_best = copy.deepcopy(architectures[max_score_id])
 
         if self.verbose:
             print(f"Winners Scores: {winners}")
@@ -145,17 +154,18 @@ class Arena:
     
     #################### END OF TRAINING ####################
 
-    def test(self,architecture,arena_contestants = 3, n_test=128, verbose=True):
+    def test(self,architecture,arena_contestants = 3, n_test=8, verbose=False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
         else:
             max_batch_size = 32
-        arch_scores = [0]
+        arch_scores = []
         generator = Generator(generation_type=self.generation_type)
         current_best = architecture
         
         for n_fight in range(n_test):
+            print(f"Test fight n°{n_fight}")
             architectures = []
             architectures.append(current_best)
             scores = []
@@ -172,76 +182,16 @@ class Arena:
             # architectures is filled, now we evaluate them two by two (every possible pair)
             for i in range(self.arena_contestants-1): 
                 for j in range(i+1, self.arena_contestants):
-                    print(f"Generating executors for architectures {i} and {j}")
-                    executors = []
-                    # create the executors  
-                    executors.append(Executor(copy.deepcopy(architectures[i])).to(device))
-                    executors.append(Executor(copy.deepcopy(architectures[j])).to(device))
-                    # Randomize the weights of the architectures
-                    executors[0].randomize_weights()
-                    executors[1].randomize_weights()
-
-                    # create the input
-                    train_size = int(self.dataset_size*self.train_test_split)
-
-                    input_p = random.randint(1,16)
-                    input_f = random.randint(1,16)
-                    input = torch.randn(self.dataset_size, input_p, input_f).to(device)
-                    train_input = input[:train_size]
-                    test_input = input[train_size:]
-
-
-                    # generate the outputs for each executor
-                    output_i = executors[0].forward(input)
-                    output_j = executors[1].forward(input)
-
-                    train_target_i = output_j[0][:train_size].to(device)
-                    train_target_j = output_i[0][:train_size].to(device)
-
-                    test_target_i = output_j[0][train_size:].to(device)
-                    test_target_j = output_i[0][train_size:].to(device)
-
-                    # make new executors and fit them
-                    learner_i = Executor(copy.deepcopy(architectures[i])).to(device)
-                    learner_j = Executor(copy.deepcopy(architectures[j])).to(device)
-                    learner_i.fit(train_input, train_target_i.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
-                    learner_j.fit(train_input, train_target_j.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
-
-                    with torch.no_grad():
-                        pred_i = learner_i.forward(test_input)[0]
-                        pred_j = learner_j.forward(test_input)[0]
-                        
-                        test_loss_i = torch.nn.functional.mse_loss(pred_i, test_target_i).item()
-                        test_loss_j = torch.nn.functional.mse_loss(pred_j, test_target_j).item()
-                        
-                        # compute the scores
-                        K_i = math.log2(max(2,architectures[i].parameter_count()))
-                        K_j = math.log2(max(2,architectures[j].parameter_count()))
-                        deltaK_i = (K_i/K_j) + math.exp(-K_i*K_j)
-                        deltaK_j = (K_j/K_i) + math.exp(-K_j*K_i)
-                        score_i = test_loss_i*deltaK_i
-                        score_j = test_loss_j*deltaK_j
-
-                        if score_i > score_j:
-                            scores[i] = scores[i] + 1
-                        else:
-                            scores[j] = scores[j] + 1
-
-                        del executors[0]
-                        del executors[0], learner_i, learner_j #because executors[0] is our previous executors[1]
-                        torch.cuda.empty_cache()
-                        if self.verbose:
-                            print(f"Architecture {i} of round {n_fight} :")
-                            architectures[i].describe()
-                            print(f"Architecture {j} of round {n_fight} :")
-                            architectures[j].describe()
-                            print(f"Test loss for executor {i}: {test_loss_i}")
-                            print(f"Test loss for executor {j}: {test_loss_j}")
+                    score_i, score_j = self.get_scores(architectures[i], architectures[j])
+                    if score_i > score_j:
+                        scores[i] = scores[i] + 1
+                    else:
+                        scores[j] = scores[j] + 1
             # Fight loop
             arch_scores.append(scores)
-            current_best = 0
 
         # We compute the number of times the first architecture was the best
+        print(arch_scores)
         n_wins = 0
         for score in arch_scores:
             if score[0] == max(score):
@@ -280,33 +230,25 @@ class Arena:
             prev_f = input_f
             last_output_node = 0
 
-            for hidden_f in mlp_hidden_sizes:                               #TODO: make the MLP builder part
-                MLP_arch.append_node(LearnableParameter((1,prev_f,hidden_f)))
-                MLP_arch.append_node(LearnableParameter((1,1,4)))
+            for i, hidden_f in enumerate(mlp_hidden_sizes):                               #TODO: make the MLP builder part
+                weight = MLP_arch.append_node(LearnableParameter((1,prev_f,hidden_f)))
+                bias = MLP_arch.append_node(LearnableParameter((1,1,hidden_f)))
+                matmul = MLP_arch.append_node(MatMul())
+                addition = MLP_arch.append_node(Add())
+                if i != len(mlp_hidden_sizes)-1:
+                    activation = MLP_arch.append_node(Activation())
 
-
-            MLP_arch.append_node(LearnableParameter((1,4,13)))
-            MLP_arch.append_node(LearnableParameter((1,1,7)))
-            MLP_arch.append_node(MatMul())
-            MLP_arch.append_node(Add())
-            MLP_arch.append_node(Activation())
-
-            MLP_arch.append_node(LearnableParameter((1,8,4)))
-            MLP_arch.append_node(LearnableParameter((1,1,4)))
-            MLP_arch.append_node(MatMul())
-            MLP_arch.append_node(Add())
-
-            #First layer connections
-            MLP_arch.add_edge(0,3)
-            MLP_arch.add_edge(1,3)
-            MLP_arch.add_edge(3,4)
-            MLP_arch.add_edge(2,4)
-            MLP_arch.add_edge(4,5)
-            #Second layer connections
-            MLP_arch.add_edge(5,8)
-            MLP_arch.add_edge(6,8)
-            MLP_arch.add_edge(7,9)
-            MLP_arch.add_edge(8,9)
+                #edges
+                MLP_arch.add_edge(last_output_node,matmul)
+                MLP_arch.add_edge(weight,matmul)
+                MLP_arch.add_edge(matmul,addition)
+                MLP_arch.add_edge(bias,addition)
+                if i != len(mlp_hidden_sizes)-1:
+                    MLP_arch.add_edge(addition,activation)
+                    last_output_node = activation
+                else:
+                    last_output_node = addition # useless in theory but might have a use in the future
+                prev_f = hidden_f
 
         
         
