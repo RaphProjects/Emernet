@@ -6,13 +6,14 @@ class LearnableParameter(Module):
     def __init__(self,shape, name = None):
         super().__init__(name, ModuleType.LEARNABLE)
         self.value = torch.nn.Parameter(torch.randn(*shape)*0.01)
+        self.n_parameters = self.value.numel()
 
     @property
     def mapping_type(self) -> MappingType:
         return MappingType.SOURCE
     
     def get_n_parameters(self):
-        return self.value.numel()
+        return self.n_parameters
     
     @staticmethod
     def random_parameters():

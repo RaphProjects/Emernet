@@ -7,6 +7,7 @@ from modules.input import *
 from graph.architecture import *
 from graph.executor import *
 from graph.generator import *
+from tournament import arena
 from tournament.arena import *
 
 def linReg():
@@ -108,10 +109,26 @@ executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=20, b
 '''
 
 
-arena = Arena(n_fights=8, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-winner_scores, winners = arena.start()
+arena1 = Arena(n_fights=7, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+winner_scores, winners = arena1.start()
 
-WinArch = winners[-1]
-arch_scores, n_wins = arena.test(WinArch,n_test=5)
-print(f"Winner winrate: {n_wins/5}")
+WinArch1 = winners[-1]
+arch_scores, n_wins1 = arena1.test(WinArch1,n_test=12)
+mlp_scores1, mlpwinrate1 = arena1.test_mlp(WinArch1,mlp_n_tests=20, mlp_hidden_sizes=[32,32,16])
+
+
+arena2 = Arena(n_fights=20, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+winrate2, winners = arena2.start()
+
+
+WinArch2 = winners[-1]
+arch_scores, n_wins2 = arena2.test(WinArch2,n_test=12)
+mlp_scores, mlpwinrate2 = arena2.test_mlp(WinArch2,mlp_n_tests=20, mlp_hidden_sizes=[32,32,16])
+
+print(f"Winner 1 winrate: {n_wins1/12}")
+print(f"Winner 2 winrate: {n_wins2/12}")
+print(f"Winner 1 MLP winrate: {mlpwinrate1}")
+print(f"Winner 2 MLP winrate: {mlpwinrate2}")
+
+print(f"Winner 1 MLP score: {mlp_scores1}")
 

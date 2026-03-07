@@ -23,6 +23,7 @@ class Add(Module):
         super().__init__(name, ModuleType.BASIC)
         self.p_projections = None
         self.f_projections = None
+        self.n_parameters = 0
 
     @property
     def mapping_type(self) -> MappingType:
@@ -31,6 +32,7 @@ class Add(Module):
     def reset_state(self):
         self.p_projections = None
         self.f_projections = None
+        self.n_parameters = 0
 
     def forward(self, inputTensors):
         
@@ -61,6 +63,8 @@ class Add(Module):
 
             self.p_projections.to(inputTensors[0].device)
             self.f_projections.to(inputTensors[0].device)
+            self.n_parameters += sum(p.numel() for p in self.p_projections.parameters())
+            self.n_parameters += sum(p.numel() for p in self.f_projections.parameters())
 
         # DEBUG - print(f"First input shape = {inputTensors[0].shape}, projection f = {self.f_projections[0]}, projection p = {self.p_projections[0]}")
         summedTensors_f = self.f_projections[0](inputTensors[0])
@@ -78,6 +82,7 @@ class MatMul(Module):
     def __init__(self, name = None):
         super().__init__(name,  ModuleType.BASIC)
         self.projections = None
+        self.n_parameters = 0
 
     @property
     def mapping_type(self) -> MappingType:
@@ -85,6 +90,7 @@ class MatMul(Module):
 
     def reset_state(self):
         self.projections = None
+        self.n_parameters = 0
     
     def forward(self, inputTensors):
         projected_tensors = inputTensors
@@ -103,6 +109,8 @@ class MatMul(Module):
                     self.projections.append(torch.nn.Identity())
                 running_shape_lastdim = inputTensors[i].shape[-1]
             self.projections.to(inputTensors[0].device)
+            self.n_parameters += sum(p.numel() for p in self.projections.parameters())
+
         # Main loop
         for i in range(1,len(inputTensors)):
             # DEBUG - print(f"Iterating on {i}, running shape: {mulTensors.shape}, input shape: {inputTensors[i].shape}, projection: {self.projections[i-1]}")

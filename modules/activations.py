@@ -11,10 +11,12 @@ class Activation(Module):
             self.raw_sharpness = torch.nn.Parameter(torch.tensor(sharpness))
             self.raw_symmetry = torch.nn.Parameter(torch.tensor(symmetry))
             self.raw_gate = torch.nn.Parameter(torch.tensor(gate))
+            self.n_parameters = 3
         else:
             self.register_buffer("sharpness", torch.sigmoid(torch.tensor(float(sharpness))))
             self.register_buffer("symmetry", torch.sigmoid(torch.tensor(float(symmetry))))
             self.register_buffer("gate", torch.sigmoid(torch.tensor(float(gate))))
+            self.n_parameters = 0
 
     @property
     def mapping_type(self) -> MappingType:
@@ -24,6 +26,8 @@ class Activation(Module):
     def random_parameters():
         return [random.random(), random.random(), random.random(), random.random()>=0.5]
 
+    def get_n_parameters(self):
+        return self.n_parameters
 
     def forward(self, inputs):
         outputs = []

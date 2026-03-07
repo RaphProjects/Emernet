@@ -27,6 +27,7 @@ class Module(ABC,torch.nn.Module):
         super().__init__()
         self.name = name
         self.module_type = module_type
+        self.n_parameters = 0
 
     @abstractmethod
     def forward(self, inputs : list[torch.Tensor])->list[torch.Tensor]:
@@ -43,3 +44,6 @@ class Module(ABC,torch.nn.Module):
         
     def reset_state(self):
         pass
+
+    def get_n_parameters(self):
+        return 0

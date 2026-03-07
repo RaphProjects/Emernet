@@ -6,7 +6,8 @@ class Input(Module):
     def __init__(self, name=None):
         super().__init__(name, ModuleType.INPUT)
         
-    
+    def get_n_parameters(self):
+        return 0
 
     @property
     def mapping_type(self) -> MappingType:
