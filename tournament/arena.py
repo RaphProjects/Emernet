@@ -199,18 +199,9 @@ class Arena:
         return arch_scores, n_wins
             
     
-    def make_mlp(self,hidden_sizes):
+    def make_mlp(self,hidden_sizes,input_f, inputTens):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         MLP_arch = Architecture()
-
-        input_p = random.randint(1,16)
-        input_f = random.randint(1,16)
-        input = torch.randn(self.dataset_size, input_p, input_f).to(device)
-        train_size = int(self.dataset_size*self.train_test_split)
-        train_input = input[:train_size]
-        test_input = input[train_size:]
-
-        inputTens = torch.randn(16,3,4)
-        outputTargetTens = torch.randn(16,1,4)
         inputModule = Input()
         inputModule.set_data(inputTens)
         MLP_arch.add_node(0,inputModule)
@@ -237,57 +228,25 @@ class Arena:
             else:
                 last_output_node = addition # useless in theory but might have a use in the future
             prev_f = hidden_f
+        return MLP_arch
 
     ############################ MLP COMPARISON ############################
 
     def test_mlp(self, architecture, mlp_n_tests=64, mlp_hidden_sizes=[32,32,16], verbose=True):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        if device.type=='cuda':
-            max_batch_size = 2048
-        else:
-            max_batch_size = 32
         scores=[]
         for test in range(mlp_n_tests):
-
-            # generate a MLP architecture
-            MLP_arch = Architecture()
-
             input_p = random.randint(1,16)
             input_f = random.randint(1,16)
             input = torch.randn(self.dataset_size, input_p, input_f).to(device)
-            train_size = int(self.dataset_size*self.train_test_split)
-            train_input = input[:train_size]
-            test_input = input[train_size:]
 
             inputTens = torch.randn(16,3,4)
-            outputTargetTens = torch.randn(16,1,4)
             inputModule = Input()
             inputModule.set_data(inputTens)
             MLP_arch.add_node(0,inputModule)
 
-            prev_f = input_f
-            last_output_node = 0
-
-            for i, hidden_f in enumerate(mlp_hidden_sizes): 
-                weight = MLP_arch.append_node(LearnableParameter((1,prev_f,hidden_f)))
-                bias = MLP_arch.append_node(LearnableParameter((1,1,hidden_f)))
-                matmul = MLP_arch.append_node(MatMul())
-                addition = MLP_arch.append_node(Add())
-                if i != len(mlp_hidden_sizes)-1:
-                    activation = MLP_arch.append_node(Activation())
-
-                #edges
-                MLP_arch.add_edge(last_output_node,matmul)
-                MLP_arch.add_edge(weight,matmul)
-                MLP_arch.add_edge(matmul,addition)
-                MLP_arch.add_edge(bias,addition)
-                if i != len(mlp_hidden_sizes)-1:
-                    MLP_arch.add_edge(addition,activation)
-                    last_output_node = activation
-                else:
-                    last_output_node = addition # useless in theory but might have a use in the future
-                prev_f = hidden_f
+            MLP_arch = self.make_mlp(mlp_hidden_sizes, input_f, inputTens)
             
             score_testedArch, score_MLP = self.get_scores(architecture, MLP_arch, input)
             scores.append((score_testedArch, score_MLP))
