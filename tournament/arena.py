@@ -13,7 +13,7 @@ from graph.executor import *
 from graph.generator import *
 
 class Arena:
-    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64, train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False):
+    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64, train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=1):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
@@ -24,14 +24,28 @@ class Arena:
         self.generation_type = generation_type
         self.verbose = verbose
         self.report = report
-    
+        self.pcp = pcp # parameter complexity penalty exponent
 
-    def get_scores(self, arch_1, arch_2, input = None):
+    def calibrate_pcp(self, n_fights=128, dataset_size=256+64, train_test_split=0.7, generation_type="agnostic", verbose=True, report=False):
+        for fight in range(n_fights):
+            size1 = random.randint(4,64)
+            size2 = random.randint(4,64)
+            generator = Generator(generation_type=generation_type)
+            arch1 = generator.generate(size1)
+            arch2 = generator.generate(size2)
+            input = torch.randn(dataset_size, size1, size2)
+            # TODO - implement the calibration loop
+
+    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
         else:
             max_batch_size = 32
+
+        arch_1.reset_state()
+        arch_2.reset_state()
+
         executors = []
         # create the executors  
         executors.append(Executor(copy.deepcopy(arch_1)).to(device))
@@ -65,8 +79,8 @@ class Arena:
         # make new executors and fit them
         learner_1 = Executor(copy.deepcopy(arch_1)).to(device)
         learner_2 = Executor(copy.deepcopy(arch_2)).to(device)
-        learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
-        learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=100, batch_size=min(train_size,max_batch_size), patience = 8, min_delta = 1e-7, cpu = False)
+        learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
 
         with torch.no_grad():
             pred_1 = learner_1.forward(test_input)[0]
@@ -80,13 +94,14 @@ class Arena:
             K_2 = math.log2(max(2,arch_2.parameter_count()))
             deltaK_1 = (K_1/K_2) + math.exp(-K_1*K_2)
             deltaK_2 = (K_2/K_1) + math.exp(-K_2*K_1)
-            score_1 = (1/(test_loss_1*deltaK_1))**0.5
-            score_2 = (1/(test_loss_2*deltaK_2))**0.5
+            score_1 = (1/(test_loss_1*( deltaK_1 ** self.pcp) ))**0.5
+            score_2 = (1/(test_loss_2*( deltaK_2 ** self.pcp) ))**0.5
 
             del executors[0]
             del executors[0], learner_1, learner_2 #because executors[0] is our previous executors[1] (executors[0] was deleted, which made executors[1] become executors[0]))
             torch.cuda.empty_cache()
-
+            if get_penalties:
+                return score_1, score_2, deltaK_1, deltaK_2
             return score_1, score_2
 
 
@@ -199,11 +214,11 @@ class Arena:
         return arch_scores, n_wins
             
     
-    def make_mlp(self,hidden_sizes,input_f, inputTens):
+    def make_mlp(self,hidden_sizes, inputTens):
+        input_f = inputTens.shape[-1]
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         MLP_arch = Architecture()
         inputModule = Input()
-        inputModule.set_data(inputTens)
         MLP_arch.add_node(0,inputModule)
 
         prev_f = input_f
@@ -241,14 +256,11 @@ class Arena:
             input_f = random.randint(1,16)
             input = torch.randn(self.dataset_size, input_p, input_f).to(device)
 
-            inputTens = torch.randn(16,3,4)
-            inputModule = Input()
-            inputModule.set_data(inputTens)
-            MLP_arch.add_node(0,inputModule)
-
-            MLP_arch = self.make_mlp(mlp_hidden_sizes, input_f, inputTens)
+            inputTens = torch.randn(16,input_p,input_f)
+            MLP_arch = self.make_mlp(mlp_hidden_sizes, inputTens)
             
-            score_testedArch, score_MLP = self.get_scores(architecture, MLP_arch, input)
+            score_testedArch, score_MLP, testedArch_penalty, MLP_penalty = self.get_scores(architecture, MLP_arch, input, get_penalties=True)
+            print(f"Tested Arch penalty: {testedArch_penalty}, MLP penalty: {MLP_penalty}")
             scores.append((score_testedArch, score_MLP))
         
         n_wins = 0

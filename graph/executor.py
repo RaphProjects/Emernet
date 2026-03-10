@@ -18,14 +18,37 @@ class Executor(torch.nn.Module):
             raise Exception("The architecture is not valid")
         
         self.architecture = architecture
+        self.output_f_linproj = torch.nn.Linear(1, 1) # Dummies
+        self.output_p_linproj = torch.nn.Linear(1, 1)
+        '''
         self.output_f_linproj = None
         self.output_p_linproj = None
+        '''
+        self.output_index = 0
         for node in architecture.nodes:
             module = architecture.nodes[node]['module']
             self.add_module(str(node), module)
 
         self.output_node = architecture.get_Output_id()
         self.adapter = False
+
+    def pick_output(self, raw_outputs, target_shape=None):
+        indexed = list(enumerate(raw_outputs))
+        max_batch = max(t.shape[0] for _, t in indexed)
+        candidates = [(i, t) for i, t in indexed if t.shape[0] == max_batch]
+
+        if target_shape is None:
+            return candidates[0][1], candidates[0][0]
+
+        target_p = target_shape[1]
+        target_f = target_shape[2]
+
+        best_index, best_tensor = min(
+            candidates,
+            key=lambda it: abs(it[1].shape[1] - target_p) + abs(it[1].shape[2] - target_f)
+        )
+        return best_tensor, best_index
+
     
     def set_Output_Adapter(self, input, target_shape, force=False):
         if not self.adapter or force:
@@ -34,15 +57,18 @@ class Executor(torch.nn.Module):
             while len(target_shape)<3:# convert the input shape to a 3D tensor
                 target_shape.insert(0,1)
             with torch.no_grad():
-                output_shape = self.forward(input, verbose=False)[0].shape
+                raw_outputs = self.forward(input, verbose=False, adapting=True)
+                chosen, chosen_index = self.pick_output(raw_outputs, target_shape)
+                chosen_shape = chosen.shape
             #print(f"the output shape is {output_shape} (sent by forward), but the target shape is {target_shape}")
-            self.output_f_linproj = torch.nn.Linear(output_shape[-1], target_shape[-1])
-            self.output_p_linproj = torch.nn.Linear(output_shape[1], target_shape[1])
+            self.output_f_linproj = torch.nn.Linear(chosen_shape[-1], target_shape[-1],device=input.device)
+            self.output_p_linproj = torch.nn.Linear(chosen_shape[1], target_shape[1],device=input.device)
             #print(f"output_f_linproj shape: {self.output_f_linproj.weight.shape}, output_p_linproj shape: {self.output_p_linproj.weight.shape}")
 
             self.output_p_linproj.to(input.device)
             self.output_f_linproj.to(input.device)
 
+            self.output_index = chosen_index
             self.adapter = True
     
     def output_adapter(self, input):
@@ -54,7 +80,7 @@ class Executor(torch.nn.Module):
 
 
 
-    def forward(self, input : torch.Tensor, current_node = None, cache_dict = None, verbose=False):
+    def forward(self, input : torch.Tensor, current_node = None, cache_dict = None, verbose=False, adapting = False):
         """
             returns the output of the current node
         """
@@ -80,7 +106,7 @@ class Executor(torch.nn.Module):
                     out = self.architecture.nodes[current_node]['module'].forward()  
                     if verbose:
                         print(f"Node {current_node} is not source not input, output shape is {out[0].shape}")
-                    return self.architecture.nodes[current_node]['module'].forward()  
+                    return out 
             
             else: # ERROR non-source node with no direct predecessors
                 raise Exception(f"The node {current_node} is not a source, but has no direct predecessors")
@@ -93,18 +119,18 @@ class Executor(torch.nn.Module):
                 input_tensors.extend(cache_dict[predecessor])
             if current_node == self.output_node:
                 raw_outputs =  self.architecture.nodes[current_node]['module'].forward(input_tensors)
-                if self.output_f_linproj == None:
-                    '''
-                    for raw in raw_outputs:
-                        print(f"raw output shape, {raw.shape}")
-                    print(f"sending the element with the largest batch for our adapter")
-                    '''
-                    best_output = max(raw_outputs, key=lambda t: t.shape[0])
-                    # print(f"best output shape, {best_output.shape}")
-                    return [best_output]
+
+                if adapting:# This means we are being called from the set_Output_Adapter method, we need to return the raw outputs
+                    return raw_outputs
+            
+                if not self.adapter:                          
+                    # Forward is called without having set the output adapter (forwarding without fitting)
+                    best_tensor, best_index = self.pick_output(raw_outputs) # pick_output will handle selecting the biggest batch size
+                    self.output_index = best_index
+                    return [best_tensor]
                 
                  
-                best_output = max(raw_outputs, key=lambda t: t.shape[0])
+                best_output = raw_outputs[self.output_index]
                 adapted_output = self.output_adapter(best_output)
                 return [adapted_output]
             
@@ -129,8 +155,16 @@ class Executor(torch.nn.Module):
         executor = executor.to(device)
         
         executor.set_Output_Adapter(input[:batch_size].to(device), target.shape, force=True)
+
         optimizer = torch.optim.Adam(executor.parameters(), lr=lr) 
         best_loss = float('inf')
+
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 
+            mode='min',       # we want loss to go DOWN
+            patience=6,       # wait 6 epochs before reducing
+            factor=0.6        # new_lr = old_lr * 0.6
+        )
 
         wait = 0
         stop_training = False
@@ -153,8 +187,10 @@ class Executor(torch.nn.Module):
                 epoch_loss += loss.item()
     
             avg_loss = epoch_loss / len(dataloader)
+            scheduler.step(avg_loss)
             if verbose and epoch % 5 == 0:
-                    print(f"Loss: {loss.item()}, epoch {epoch}/{max_iter}")
+                    current_lr = optimizer.param_groups[0]['lr']
+                    print(f"Epoch {epoch}/{max_iter} | Loss: {avg_loss:.6f} | LR: {current_lr:.6f}")
 
             # Early stopping
             if avg_loss < best_loss-min_delta:
