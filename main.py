@@ -107,7 +107,7 @@ executor = Executor(architecture)
 executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=20, batch_size=8, patience = 32, min_delta = 1e-7, cpu = False)
 #executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.01, max_iter=100, batch_size=8, patience = 10, min_delta = 1e-7, cpu = True)
 '''
-
+'''
 arena1 = Arena(n_fights=4, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
 winner_scores, winners = arena1.start()
 
@@ -130,7 +130,7 @@ print(f"Winner 1 MLP winrate: {mlpwinrate1}")
 print(f"Winner 2 MLP winrate: {mlpwinrate2}")
 
 print(f"Winner 1 MLP score: {mlp_scores1}")
-
+'''
 '''
 # test : do the mlps learn at all?
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -160,3 +160,6 @@ output = executor.forward(inputTensTest)
 loss = torch.nn.functional.mse_loss(output[0], outputTargetTensTest)
 print(f"Loss: {loss.item()}")
 '''
+arena = Arena(n_fights=12, architecture_size=12, arena_contestants=3, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False, pcp=1)
+arena.calibrate_pcp(n_fights=128, verbose=False, finalvalsize=64)
+# TODO - fix the mismatch in the executor

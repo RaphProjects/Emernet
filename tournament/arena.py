@@ -26,17 +26,127 @@ class Arena:
         self.report = report
         self.pcp = pcp # parameter complexity penalty exponent
 
-    def calibrate_pcp(self, n_fights=128, dataset_size=256+64, train_test_split=0.7, generation_type="agnostic", verbose=True, report=False):
-        for fight in range(n_fights):
-            size1 = random.randint(4,64)
-            size2 = random.randint(4,64)
-            generator = Generator(generation_type=generation_type)
-            arch1 = generator.generate(size1)
-            arch2 = generator.generate(size2)
-            input = torch.randn(dataset_size, size1, size2)
-            # TODO - implement the calibration loop
+    def calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
+                    initial_step=0.1, step_decay=0.98, verbose=True, 
+                    finalvalsize=32):
+        """
+        Fights architectures of different sizes against each other.
+        Adjusts PCP so that size alone doesn't predict the winner.
+        """
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        generator = Generator(generation_type=self.generation_type)
+        step = initial_step
+        
+        best_outerfunction = "log2"
+        best_distance = float('inf')
+        
+        for outerfunction in ["log2", "sqrt", "identity", "square"]:
+            self.pcp = 1.0  # reset for each outer function
+            step = initial_step
+            
+            for fight in range(n_fights):
+                # Keep sizes reasonable to avoid OOM
+                size1 = random.randint(min_nodes, max_nodes)
+                size2 = random.randint(min_nodes, max_nodes)
+                
+                while abs(size1 - size2) < 2:
+                    size2 = random.randint(min_nodes, max_nodes)
+                
+                firstisbigger = size1 > size2
+                
+                try:
+                    arch1 = generator.generate(size1)
+                    arch2 = generator.generate(size2)
+                    score1, score2 = self.get_scores(arch1, arch2, 
+                                                    outerfunction=outerfunction)
+                    firstwon = score1 > score2
+                    
+                    # Size-proportional adjustment
+                    size_ratio = max(size1, size2) / max(1, min(size1, size2))
+                    adjustment = step * math.log2(size_ratio)
+                    
+                    if firstwon == firstisbigger:
+                        # Bigger won → increase penalty
+                        self.pcp += adjustment
+                    else:
+                        # Smaller won → decrease penalty
+                        self.pcp -= adjustment
+                    
+                    self.pcp = max(0.0, self.pcp)
+                    step *= step_decay
+                    
+                except (RuntimeError, Exception) as e:
+                    if "out of memory" in str(e).lower():
+                        if device.type == 'cuda':
+                            torch.cuda.empty_cache()
+                        if verbose:
+                            print(f"  OOM on sizes {size1},{size2} — skipping")
+                        continue
+                    else:
+                        if verbose:
+                            print(f"  Error on sizes {size1},{size2}: {e} — skipping")
+                        continue
+                finally:
+                    # Always clean up
+                    if device.type == 'cuda':
+                        torch.cuda.empty_cache()
+                
+                if verbose and fight % 10 == 0:
+                    print(f"  {outerfunction} fight {fight}/{n_fights} | "
+                        f"PCP: {self.pcp:.4f} | step: {step:.4f} | "
+                        f"sizes: {size1} vs {size2}")
+            
+            # Validation
+            bigger_wins = 0
+            valid_fights = 0
+            
+            for fight in range(finalvalsize):
+                size1 = random.randint(min_nodes, max_nodes)
+                size2 = random.randint(min_nodes, max_nodes)
+                
+                while abs(size1 - size2) < 2:
+                    size2 = random.randint(min_nodes, max_nodes)
+                
+                try:
+                    arch1 = generator.generate(size1)
+                    arch2 = generator.generate(size2)
+                    
+                    # Bigger always first
+                    if size2 > size1:
+                        arch1, arch2 = arch2, arch1
+                    
+                    score1, score2 = self.get_scores(arch1, arch2, 
+                                                    outerfunction=outerfunction)
+                    valid_fights += 1
+                    if score1 > score2:
+                        bigger_wins += 1
+                        
+                except (RuntimeError, Exception) as e:
+                    if device.type == 'cuda':
+                        torch.cuda.empty_cache()
+                    continue
+                finally:
+                    if device.type == 'cuda':
+                        torch.cuda.empty_cache()
+            
+            if valid_fights > 0:
+                distance = abs(bigger_wins / valid_fights - 0.5)
+                print(f"\n{outerfunction}: PCP={self.pcp:.4f} | "
+                    f"bigger won {bigger_wins}/{valid_fights} | "
+                    f"distance to 0.5: {distance:.4f}")
+                
+                if distance < best_distance:
+                    best_distance = distance
+                    best_outerfunction = outerfunction
+                    best_pcp = self.pcp
+        
+        self.pcp = best_pcp
+        self.outerfunction = best_outerfunction
+        print(f"\nBest: {best_outerfunction} with PCP={best_pcp:.4f} "
+            f"(distance={best_distance:.4f})")
+        return self.pcp, best_outerfunction
 
-    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False):
+    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="log2"):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
@@ -90,8 +200,19 @@ class Arena:
             test_loss_2 = torch.nn.functional.mse_loss(pred_2, test_target_2).item()
             
             # compute the scores
-            K_1 = math.log2(max(2,arch_1.parameter_count()))
-            K_2 = math.log2(max(2,arch_2.parameter_count()))
+            if outerfunction == "log2":
+                K_1 = math.log2(max(2,arch_1.parameter_count()))
+                K_2 = math.log2(max(2,arch_2.parameter_count()))
+            elif outerfunction == "sqrt":
+                K_1 = math.sqrt(max(2,arch_1.parameter_count()))
+                K_2 = math.sqrt(max(2,arch_2.parameter_count()))
+            elif outerfunction == "identity":
+                K_1 = max(2,arch_1.parameter_count())
+                K_2 = max(2,arch_2.parameter_count())
+            if outerfunction == "square":
+                K_1 = max(2,arch_1.parameter_count())**2
+                K_2 = max(2,arch_2.parameter_count())**2
+
             deltaK_1 = (K_1/K_2) + math.exp(-K_1*K_2)
             deltaK_2 = (K_2/K_1) + math.exp(-K_2*K_1)
             score_1 = (1/(test_loss_1*( deltaK_1 ** self.pcp) ))**0.5
