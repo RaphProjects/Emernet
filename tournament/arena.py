@@ -41,11 +41,13 @@ class Arena:
         best_outerfunction = "log2"
         best_distance = float('inf')
         
-        for outerfunction in ["log2", "sqrt", "identity", "square"]:
-            self.pcp = 1.0  # reset for each outer function
+        for outerfunction in ["log2", "sqrt", "identity", "pow1/pi"]:
+            self.pcp = 0.5  # reset for each outer function
             step = initial_step
             
             for fight in range(n_fights):
+                if fight % 5 == 0:
+                    print(f"Fight {fight}/{n_fights} for {outerfunction}, current PCP: {self.pcp:.4f}")
                 # Keep sizes reasonable to avoid OOM
                 size1 = random.randint(min_nodes, max_nodes)
                 size2 = random.randint(min_nodes, max_nodes)
@@ -210,9 +212,9 @@ class Arena:
             elif outerfunction == "identity":
                 K_1 = max(2,arch_1.parameter_count())
                 K_2 = max(2,arch_2.parameter_count())
-            if outerfunction == "square":
-                K_1 = max(2,arch_1.parameter_count())**2
-                K_2 = max(2,arch_2.parameter_count())**2
+            if outerfunction == "pow1/pi":
+                K_1 = max(2,arch_1.parameter_count())**1/math.pi
+                K_2 = max(2,arch_2.parameter_count())**1/math.pi
 
             deltaK_1 = (K_1/K_2) + math.exp(-K_1*K_2)
             deltaK_2 = (K_2/K_1) + math.exp(-K_2*K_1)
