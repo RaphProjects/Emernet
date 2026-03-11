@@ -195,47 +195,6 @@ class Arena:
         with torch.no_grad():
             pred_1 = learner_1.forward(test_input)[0]
             pred_2 = learner_2.forward(test_input)[0]
-
-            def diagnose_mismatch(name, pred, target, learner, arch):
-                if pred.shape != target.shape:
-                    print(f"\n=== SHAPE MISMATCH in get_scores ({name}) ===")
-                    print(f"  pred shape:    {pred.shape}")
-                    print(f"  target shape:  {target.shape}")
-                    print(f"  adapter flag:  {learner.adapter}")
-                    print(f"  output_index:  {learner.output_index}")
-                    print(f"  f_proj:        {learner.output_f_linproj}")
-                    print(f"  p_proj:        {learner.output_p_linproj}")
-                    print(f"  input shape:   {test_input.shape}")
-                    
-                    raw = learner.forward(test_input, adapting=True)
-                    print(f"  raw output count: {len(raw)}")
-                    for idx, r in enumerate(raw):
-                        marker = " ← selected" if idx == learner.output_index else ""
-                        print(f"    raw[{idx}] shape: {r.shape}{marker}")
-                    
-                    print(f"  architecture:")
-                    arch.describe()
-                    print(f"=== END DIAGNOSTIC ({name}) ===\n")
-                    return True
-                return False
-
-            mismatch_1 = diagnose_mismatch("learner_1", pred_1, test_target_1, 
-                                            learner_1, arch_1)
-            mismatch_2 = diagnose_mismatch("learner_2", pred_2, test_target_2, 
-                                            learner_2, arch_2)
-
-            # Also check target generation — did the initial forwards
-            # produce consistent shapes?
-            if mismatch_1 or mismatch_2:
-                print(f"  === Target generation info ===")
-                print(f"  output_1 shape: {output_1[0].shape}")
-                print(f"  output_2 shape: {output_2[0].shape}")
-                print(f"  train_target_1 shape: {train_target_1.shape}")
-                print(f"  train_target_2 shape: {train_target_2.shape}")
-                print(f"  test_target_1 shape:  {test_target_1.shape}")
-                print(f"  test_target_2 shape:  {test_target_2.shape}")
-                print(f"  arch_1 params: {arch_1.parameter_count()}")
-                print(f"  arch_2 params: {arch_2.parameter_count()}")
             
             test_loss_1 = torch.nn.functional.mse_loss(pred_1, test_target_1).item()
             test_loss_2 = torch.nn.functional.mse_loss(pred_2, test_target_2).item()

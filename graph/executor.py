@@ -181,6 +181,30 @@ class Executor(torch.nn.Module):
                 batch_input = batch_input.to(device)
                 batch_target = batch_target.to(device)
                 output = executor.forward(batch_input)
+                if output[0].shape != batch_target.shape:
+                    print("\n=== SHAPE MISMATCH DETECTED ===")
+                    print(f"  output shape:  {output[0].shape}")
+                    print(f"  target shape:  {batch_target.shape}")
+                    print(f"  adapter flag:  {executor.adapter}")
+                    print(f"  output_index:  {executor.output_index}")
+                    print(f"  f_proj:        {executor.output_f_linproj}")
+                    print(f"  p_proj:        {executor.output_p_linproj}")
+                    print(f"  input shape:   {batch_input.shape}")
+                    
+                    # Check what raw outputs look like
+                    with torch.no_grad():
+                        raw = executor.forward(batch_input, adapting=True)
+                        print(f"  raw output count: {len(raw)}")
+                        for idx, r in enumerate(raw):
+                            marker = " ← selected" if idx == executor.output_index else ""
+                            print(f"    raw[{idx}] shape: {r.shape}{marker}")
+                    
+                    print(f"  architecture:")
+                    executor.architecture.describe()
+                    print("=== END DIAGNOSTIC ===\n")
+                    
+                    # Skip this batch to avoid crash
+                    continue
                 loss = torch.nn.functional.mse_loss(output[0], batch_target)
 
                 
