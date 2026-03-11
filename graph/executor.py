@@ -152,9 +152,11 @@ class Executor(torch.nn.Module):
         executor = executor.to(device)
         
         executor.set_Output_Adapter(input[:batch_size].to(device), target.shape, force=True)
+        '''
         print(f"adapter flag: {executor.adapter}")
         print(f"f_proj type: {type(executor.output_f_linproj)}")
         print(f"f_proj is None: {executor.output_f_linproj is None}")
+        '''
 
         optimizer = torch.optim.Adam(executor.parameters(), lr=lr) 
         best_loss = float('inf')
