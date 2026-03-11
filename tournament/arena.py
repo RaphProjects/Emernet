@@ -40,7 +40,7 @@ class Arena:
         
         best_outerfunction = "log2"
         best_distance = float('inf')
-        
+        best_pcp = self.pcp
         for outerfunction in ["log2", "sqrt", "identity", "pow1/pi"]:
             self.pcp = 0.5  # reset for each outer function
             step = initial_step
@@ -60,6 +60,8 @@ class Arena:
                 try:
                     arch1 = generator.generate(size1)
                     arch2 = generator.generate(size2)
+
+                    firstisbigger = arch1.parameter_count() > arch2.parameter_count()
                     score1, score2 = self.get_scores(arch1, arch2, 
                                                     outerfunction=outerfunction)
                     firstwon = score1 > score2
@@ -115,7 +117,7 @@ class Arena:
                     arch2 = generator.generate(size2)
                     
                     # Bigger always first
-                    if size2 > size1:
+                    if arch2.parameter_count() > arch1.parameter_count():
                         arch1, arch2 = arch2, arch1
                     
                     score1, score2 = self.get_scores(arch1, arch2, 
@@ -206,15 +208,15 @@ class Arena:
             if outerfunction == "log2":
                 K_1 = math.log2(max(2,arch_1.parameter_count()))
                 K_2 = math.log2(max(2,arch_2.parameter_count()))
-            elif outerfunction == "sqrt":
+            if outerfunction == "sqrt":
                 K_1 = math.sqrt(max(2,arch_1.parameter_count()))
                 K_2 = math.sqrt(max(2,arch_2.parameter_count()))
-            elif outerfunction == "identity":
+            if outerfunction == "identity":
                 K_1 = max(2,arch_1.parameter_count())
                 K_2 = max(2,arch_2.parameter_count())
             if outerfunction == "pow1/pi":
-                K_1 = max(2,arch_1.parameter_count())**1/math.pi
-                K_2 = max(2,arch_2.parameter_count())**1/math.pi
+                K_1 = max(2,arch_1.parameter_count())**(1/math.pi)
+                K_2 = max(2,arch_2.parameter_count())**(1/math.pi)
 
             deltaK_1 = (K_1/K_2) + math.exp(-K_1*K_2)
             deltaK_2 = (K_2/K_1) + math.exp(-K_2*K_1)

@@ -160,7 +160,7 @@ output = executor.forward(inputTensTest)
 loss = torch.nn.functional.mse_loss(output[0], outputTargetTensTest)
 print(f"Loss: {loss.item()}")
 '''
-arena = Arena(n_fights=12, architecture_size=12, dataset_size=256+64, arena_contestants=3, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False, pcp=1, cpu=False)
+arena = Arena(n_fights=12, architecture_size=12, dataset_size=72, arena_contestants=3, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False, pcp=1, cpu=False)
 arena.calibrate_pcp(n_fights=64, verbose=False, finalvalsize=32)
 # TODO - fix the mismatch in the executor
 # edge case : source is output? 
