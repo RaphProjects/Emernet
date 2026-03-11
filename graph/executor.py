@@ -98,48 +98,45 @@ class Executor(torch.nn.Module):
             if self.architecture.nodes[current_node]['module'].mapping_type == MappingType.SOURCE:
                 if self.architecture.nodes[current_node]['module'].module_type == ModuleType.INPUT: # input node case
                     self.architecture.nodes[current_node]['module'].set_data(input)
-                    out = self.architecture.nodes[current_node]['module'].forward()
-                    if verbose:
-                        print(f"Node {current_node} is an input node, output shape is {out[0].shape}")
-                    return out
-                else:
-                    out = self.architecture.nodes[current_node]['module'].forward()  
-                    if verbose:
-                        print(f"Node {current_node} is not source not input, output shape is {out[0].shape}")
-                    return out 
+                
+                raw_outputs = self.architecture.nodes[current_node]['module'].forward()
+                if verbose:
+                    print(f"Node {current_node} is a source node, output shape is {raw_outputs[0].shape}")
             
             else: # ERROR non-source node with no direct predecessors
                 raise Exception(f"The node {current_node} is not a source, but has no direct predecessors")
 
-        else:
+        else: # not a source node
             input_tensors = []
             for predecessor in direct_predecessors:
                 if predecessor not in cache_dict:
                     cache_dict[predecessor] = self.forward(input=input, current_node=predecessor, cache_dict=cache_dict, verbose=verbose) # recursive call
                 input_tensors.extend(cache_dict[predecessor])
-            if current_node == self.output_node:
-                raw_outputs =  self.architecture.nodes[current_node]['module'].forward(input_tensors)
 
-                if adapting:# This means we are being called from the set_Output_Adapter method, we need to return the raw outputs
-                    return raw_outputs
-            
-                if not self.adapter:                          
-                    # Forward is called without having set the output adapter (forwarding without fitting)
-                    best_tensor, best_index = self.pick_output(raw_outputs) # pick_output will handle selecting the biggest batch size
-                    self.output_index = best_index
-                    return [best_tensor]
-                
-                 
-                best_output = raw_outputs[self.output_index]
-                adapted_output = self.output_adapter(best_output)
-                return [adapted_output]
-            
-            # Not an output node nor a source node
-            out = self.architecture.nodes[current_node]['module'].forward(input_tensors)
+            raw_outputs =  self.architecture.nodes[current_node]['module'].forward(input_tensors)
             if verbose:
-                print(f"Node {current_node} is neither an output node nor a source node, output shape is {out[0].shape}")
-            return out
-    
+                print(f"Node {current_node} is not a source node, output shape is {raw_outputs[0].shape}")
+
+        # if this is the output node, we need to adapt the output to match the target shape
+        # this applies regardless of whether the output node is a source node or not
+        if current_node == self.output_node:
+
+            if adapting:# This means we are being called from the set_Output_Adapter method, we need to return the raw outputs
+                return raw_outputs
+        
+            if not self.adapter:                          
+                # Forward is called without having set the output adapter (forwarding without fitting)
+                best_tensor, best_index = self.pick_output(raw_outputs) # pick_output will handle selecting the biggest batch size
+                self.output_index = best_index
+                return [best_tensor]
+            
+            # here we are not adapting nor forwarding without adapting : we are fitting
+            best_output = raw_outputs[self.output_index]
+            adapted_output = self.output_adapter(best_output)
+            return [adapted_output]
+            
+        
+        return raw_outputs # not the output node, just return the raw outputs of this node's module
 
     def randomize_weights(self):
         for param in self.parameters():

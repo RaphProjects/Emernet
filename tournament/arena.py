@@ -13,7 +13,7 @@ from graph.executor import *
 from graph.generator import *
 
 class Arena:
-    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64, train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=1):
+    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64, train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=1, cpu=False):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
@@ -25,6 +25,7 @@ class Arena:
         self.verbose = verbose
         self.report = report
         self.pcp = pcp # parameter complexity penalty exponent
+        self.cpu = cpu
 
     def calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
                     initial_step=0.1, step_decay=0.98, verbose=True, 
@@ -147,7 +148,7 @@ class Arena:
         return self.pcp, best_outerfunction
 
     def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="log2"):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device('cuda' if torch.cuda.is_available() and not self.cpu else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
         else:
