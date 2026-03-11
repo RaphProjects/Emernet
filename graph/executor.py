@@ -18,8 +18,8 @@ class Executor(torch.nn.Module):
             raise Exception("The architecture is not valid")
         
         self.architecture = architecture
-        self.output_f_linproj = torch.nn.Linear(1, 1) # Dummies
-        self.output_p_linproj = torch.nn.Linear(1, 1)
+        self.output_f_linproj = torch.nn.Identity() # Dummies
+        self.output_p_linproj = torch.nn.Identity()
         '''
         self.output_f_linproj = None
         self.output_p_linproj = None
@@ -155,6 +155,9 @@ class Executor(torch.nn.Module):
         executor = executor.to(device)
         
         executor.set_Output_Adapter(input[:batch_size].to(device), target.shape, force=True)
+        print(f"adapter flag: {executor.adapter}")
+        print(f"f_proj type: {type(executor.output_f_linproj)}")
+        print(f"f_proj is None: {executor.output_f_linproj is None}")
 
         optimizer = torch.optim.Adam(executor.parameters(), lr=lr) 
         best_loss = float('inf')

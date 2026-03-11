@@ -145,12 +145,12 @@ class Generator:
         # cleaning
 
         # remove all the nodes that can't reach the output
-        # we define the output as the node linked to input with the most ancestors
+        # we define the output as the non-source node linked to input with the most ancestors
         outputnode = 0
         outputancestors = 0
         for node in self.architecture.nodes:
             ancestors = networkx.ancestors(self.architecture, node)
-            if len(ancestors) > outputancestors and 0 in ancestors :
+            if len(ancestors) > outputancestors and 0 in ancestors and self.architecture.nodes[node]['module'].mapping_type != MappingType.SOURCE:
                 outputnode = node
                 outputancestors = len(ancestors)
 
