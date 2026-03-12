@@ -41,8 +41,8 @@ class Arena:
         best_outerfunction = "log2"
         best_distance = float('inf')
         best_pcp = self.pcp
-        for outerfunction in ["log2", "sqrt", "identity", "pow1/pi"]:
-            self.pcp = 0.5  # reset for each outer function
+        for outerfunction in ["sqrt"]:
+            self.pcp = 0.38  # reset for each outer function
             step = initial_step
             
             for fight in range(n_fights):
@@ -67,7 +67,7 @@ class Arena:
                     firstwon = score1 > score2
                     
                     # Size-proportional adjustment
-                    size_ratio = max(size1, size2) / max(1, min(size1, size2))
+                    size_ratio = max(arch1.parameter_count(), arch2.parameter_count()) / max(1, min(arch1.parameter_count(), arch2.parameter_count()))
                     adjustment = step * math.log2(size_ratio)
                     
                     if firstwon == firstisbigger:
@@ -151,7 +151,7 @@ class Arena:
             f"(distance={best_distance:.4f})")
         return self.pcp, best_outerfunction
 
-    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="log2"):
+    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt"):
         device = torch.device('cuda' if torch.cuda.is_available() and not self.cpu else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
