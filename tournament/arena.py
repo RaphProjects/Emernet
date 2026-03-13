@@ -163,6 +163,10 @@ class Arena:
         if randomizeHP:
             random_batch_size = max_batch_size + (random.random()-0.5) * max_batch_size * 0.5 # more or less 25% of the batch size
             random_lr = random.choice([0.02, 0.01, 0.005, 0.001, 0.0005, 0.0001,0.00005, 0.00001])
+            random_patience = random.choice([6, 8, 10, 12, 15, 20, 25, 30])
+            random_min_delta = random.choice([1e-5, 1e-6, 1e-7, 1e-8])
+            random_max_iter = random.choice([100, 200, 300, 400, 500, 600, 700])
+    
         arch_1.reset_state()
         arch_2.reset_state()
 
@@ -199,8 +203,12 @@ class Arena:
         # make new executors and fit them
         learner_1 = Executor(copy.deepcopy(arch_1)).to(device)
         learner_2 = Executor(copy.deepcopy(arch_2)).to(device)
-        learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
-        learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        if randomizeHP:
+            learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = False)
+            learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = False)
+        else:
+            learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+            learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
 
         with torch.no_grad():
             pred_1 = learner_1.forward(test_input)[0]

@@ -161,7 +161,7 @@ print(f"Winner MLP score: {mlp_scores_medium}")
 #print(f"Winner MLP score: {mlp_scores_large}")
 
 '''
-# TODO - randomize learning weights, batch size, patience, and check the performance of a winner against random architectures
+# TODO TOTEST - randomize learning weights, batch size, patience, and check the performance of a winner against random architectures
 # TODO - check the performance of a winner against ranndom architectures and MLP on 3 real world datasets
 # TODO - smooth the learning, maybe generate X random architectures, test every couple, pick the one with the best winrate
 # TODO - Find a way to make architectures less dense
