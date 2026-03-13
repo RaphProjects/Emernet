@@ -151,13 +151,18 @@ class Arena:
             f"(distance={best_distance:.4f})")
         return self.pcp, best_outerfunction
 
-    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt"):
+    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt", randomizeHP=False):
         device = torch.device('cuda' if torch.cuda.is_available() and not self.cpu else 'cpu')
+
         if device.type=='cuda':
             max_batch_size = 2048
         else:
             max_batch_size = 32
 
+        # Generate random values for the hyperparameters
+        if randomizeHP:
+            random_batch_size = max_batch_size + (random.random()-0.5) * max_batch_size * 0.5 # more or less 25% of the batch size
+            random_lr = random.choice([0.02, 0.01, 0.005, 0.001, 0.0005, 0.0001,0.00005, 0.00001])
         arch_1.reset_state()
         arch_2.reset_state()
 
@@ -231,7 +236,7 @@ class Arena:
             return score_1, score_2
 
 
-    def start(self):
+    def start(self, randomizeHP = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
@@ -261,8 +266,8 @@ class Arena:
 
             # architectures is filled, now we evaluate them two by two (every possible pair)
             for i in range(self.arena_contestants-1): 
-                for j in range(i+1, self.arena_contestants):
-                    score_i, score_j = self.get_scores(architectures[i], architectures[j])
+                for j in range(i+1, self.arena_contestants):   
+                    score_i, score_j = self.get_scores(architectures[i], architectures[j], randomizeHP=randomizeHP)
                     if score_j < score_i:
                         scores[i] = scores[i] + 1
                     else:

@@ -139,7 +139,7 @@ loss = torch.nn.functional.mse_loss(output[0], outputTargetTensTest)
 print(f"Loss: {loss.item()}")
 '''
 arena = Arena(n_fights=40, architecture_size=16, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-winrate, winners = arena.start()
+winrate, winners = arena.start(randomizeHP = True)
 
 
 WinArch = winners[-1]
