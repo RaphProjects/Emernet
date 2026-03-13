@@ -251,6 +251,42 @@ class Arena:
             return score_1, score_2
 
 
+    def smooth_selection(self, n_archs=16, max_fights=256, verbose=False):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if device.type=='cuda':
+            max_batch_size = 2048
+        else:
+            max_batch_size = 32
+
+        # generate n_archs random architectures
+        generator = Generator(generation_type=self.generation_type)
+        architectures = []
+
+
+        for i in range(n_archs):
+            architectures.append(generator.generate(self.architecture_size))
+
+        arch_scores = [0 for _ in range(n_archs)]
+        n_fights = 0
+        for i in range(n_archs):
+            for j in range(i+1, n_archs):
+                score_i, score_j = self.get_scores(architectures[i], architectures[j], randomizeHP=True)
+                if score_j < score_i:
+                    arch_scores[i] += 1
+                else:
+                    arch_scores[j] += 1
+                n_fights += 1
+                if n_fights >= max_fights:
+                    break
+            
+                
+        # get the index of the best architecture
+        best_arch_index = arch_scores.index(max(arch_scores))
+        return architectures[best_arch_index], arch_scores[best_arch_index]
+
+            
+
+
     def start(self, randomizeHP = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
@@ -532,7 +568,7 @@ class Arena:
         results['cifar10'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
         del executor
         torch.cuda.empty_cache()
-        
+
         return results
 
 
