@@ -13,7 +13,7 @@ from graph.executor import *
 from graph.generator import *
 
 class Arena:
-    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64, train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=1, cpu=False):
+    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64, train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=0.38, cpu=False):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
