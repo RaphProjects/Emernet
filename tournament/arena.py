@@ -1,9 +1,16 @@
 import copy
 import math
-
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import torchvision
+import torchvision.transforms as transforms
 import torch
 import random
 import numpy as np
+import time
+
+
 from modules.base import ModuleType
 from modules.operations import *
 from modules.learnable import *
@@ -408,8 +415,125 @@ class Arena:
                 n_wins += 1
         return scores, n_wins/mlp_n_tests
 
+    def realDataSet_test(self, architecture, verbose=True):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if device.type=='cuda':
+            max_batch_size = 2048
+        else:
+            max_batch_size = 32
         
+        results = {}
+
+        ################# 1 - California housing dataset #################
+
+        # Load California housing dataset
+        data = fetch_california_housing()
+        X, y = data.data, data.target
+
+        scaler_X = StandardScaler()
+        scaler_y = StandardScaler()
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        X_train = scaler_X.fit_transform(X_train)
+        X_test = scaler_X.transform(X_test)
+        y_train = scaler_y.fit_transform(y_train)
+        y_test = scaler_y.transform(y_test)
+
+        # convert to 3D tensors
+        train_input = torch.tensor(X_train, dtype=torch.float32).unsqueeze(1).to(device)
+        train_target = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1).to(device)
+
+        test_input = torch.tensor(X_test, dtype=torch.float32).unsqueeze(1).to(device)
+        test_target = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1).to(device)
+
         
+        executor = Executor(architecture)
+
+        # measure time taken for fitting
+        start_fit_time = time.time()
+        executor.fit(train_input, train_target, verbose=verbose, lr=0.01, max_iter=500, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        end_fit_time = time.time()
+        fit_delay = end_fit_time - start_fit_time
+
+        # measure time taken for testing
+        start_test_time = time.time()
+        test_output = executor.forward(test_input)
+        end_test_time = time.time()
+        test_delay = end_test_time - start_test_time
+        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target)
+
+        results['california_housing'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
+        del executor
+        torch.cuda.empty_cache()
+        ################# 2 - MNIST #################
+        # Load MNIST dataset
+
+        train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transforms.ToTensor())
+        test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transforms.ToTensor())
+        
+        # minmax scaling
+        train_input_data = train_dataset.data.float() / 255.0
+        test_input_data = test_dataset.data.float() / 255.0
+        train_target_data = train_dataset.targets
+        test_target_data = test_dataset.targets
+
+        # convert to 3D tensors
+        train_target_onehot = torch.nn.functional.one_hot(train_target_data, 10).float().unsqueeze(1).to(device)
+        test_target_onehot = torch.nn.functional.one_hot(test_target_data, 10).float().unsqueeze(1).to(device)
+
+        executor = Executor(architecture)
+        # measure time taken for fitting
+        start_fit_time = time.time()
+        executor.fit(train_input_data, train_target_onehot, verbose=verbose, lr=0.01, max_iter=500, batch_size=min(len(train_input_data),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        end_fit_time = time.time()
+        fit_delay = end_fit_time - start_fit_time
+
+        # measure time taken for testing
+        start_test_time = time.time()
+        test_output = executor.forward(test_input_data)
+        end_test_time = time.time()
+        test_delay = end_test_time - start_test_time
+        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target_onehot)
+
+        results['mnist'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
+        del executor
+        torch.cuda.empty_cache()
+
+        ################# 3 - CIFAR10 #################
+        # Load CIFAR10 dataset
+        train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transforms.ToTensor())
+        test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transforms.ToTensor())
+        
+        train_input = torch.stack([img for img, _ in train_dataset])
+        train_input = test_input.view(50000, 32 , 96)
+
+        train_target = torch.tensor([label for _, label in train_dataset])
+        train_target_onehot = torch.nn.functional.one_hot(train_target, 10).float().unsqueeze(1).to(device)
+
+        test_input = torch.stack([img for img, _ in test_dataset])
+        test_input = test_input.view(10000, 32 , 96)
+        test_target = torch.tensor([label for _, label in test_dataset])
+        test_target_onehot = torch.nn.functional.one_hot(test_target, 10).float().unsqueeze(1).to(device)
+
+        executor = Executor(architecture)
+        # measure time taken for fitting
+        start_fit_time = time.time()
+        executor.fit(train_input, train_target_onehot, verbose=verbose, lr=0.01, max_iter=500, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        end_fit_time = time.time()
+        fit_delay = end_fit_time - start_fit_time
+
+        # measure time taken for testing
+        start_test_time = time.time()
+        test_output = executor.forward(test_input)
+        end_test_time = time.time()
+        test_delay = end_test_time - start_test_time
+        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target_onehot)
+
+        results['cifar10'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
+        del executor
+        torch.cuda.empty_cache()
+        
+        return results
 
 
 

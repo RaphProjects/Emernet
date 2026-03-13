@@ -1,5 +1,11 @@
 import torch
 import numpy as np
+import torchvision
+import torchvision.transforms as transforms
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
 from modules.base import ModuleType
 from modules.operations import *
 from modules.learnable import *
@@ -9,6 +15,7 @@ from graph.executor import *
 from graph.generator import *
 from tournament import arena
 from tournament.arena import *
+
 
 def linReg():
     architecture = Architecture()
@@ -88,6 +95,7 @@ def twolayersMLP():
     executor = Executor(architecture)
     executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=1000, batch_size=16, patience = 10, min_delta = 1e-7)
 
+
 #twolayersMLP()
 
 '''
@@ -162,6 +170,7 @@ print(f"Winner MLP score: {mlp_scores_medium}")
 
 '''
 # TODO TOTEST - randomize learning weights, batch size, patience, and check the performance of a winner against random architectures
+
 # TODO - check the performance of a winner against ranndom architectures and MLP on 3 real world datasets
 # TODO - smooth the learning, maybe generate X random architectures, test every couple, pick the one with the best winrate
 # TODO - Find a way to make architectures less dense
