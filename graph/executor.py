@@ -208,6 +208,7 @@ class Executor(torch.nn.Module):
 
                 
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(executor.parameters(), max_norm=1.0)
                 optimizer.step()
                 optimizer.zero_grad()
                 epoch_loss += loss.item()

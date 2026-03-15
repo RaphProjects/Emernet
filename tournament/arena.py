@@ -9,6 +9,7 @@ import torch
 import random
 import numpy as np
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 from modules.base import ModuleType
@@ -158,22 +159,26 @@ class Arena:
             f"(distance={best_distance:.4f})")
         return self.pcp, best_outerfunction
 
-    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt", randomizeHP=False):
+    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt", randomizeHP=False, pcp=None):
         device = torch.device('cuda' if torch.cuda.is_available() and not self.cpu else 'cpu')
 
         if device.type=='cuda':
             max_batch_size = 2048
         else:
             max_batch_size = 32
-
+        if pcp is None:
+            pcp = self.pcp
         # Generate random values for the hyperparameters
         if randomizeHP:
-            random_batch_size = max_batch_size + (random.random()-0.5) * max_batch_size * 0.5 # more or less 25% of the batch size
+            random_batch_size = int(max_batch_size + (random.random()-0.5) * max_batch_size * 0.5) # more or less 25% of the batch size
             random_lr = random.choice([0.02, 0.01, 0.005, 0.001, 0.0005, 0.0001,0.00005, 0.00001])
             random_patience = random.choice([6, 8, 10, 12, 15, 20, 25, 30])
             random_min_delta = random.choice([1e-5, 1e-6, 1e-7, 1e-8])
             random_max_iter = random.choice([100, 200, 300, 400, 500, 600, 700])
-    
+            train_test_split = random.choice([0.6, 0.7, 0.8])
+
+        else :
+            train_test_split = self.train_test_split
         arch_1.reset_state()
         arch_2.reset_state()
 
@@ -187,7 +192,7 @@ class Arena:
 
         if input is None:
             # create the input
-            train_size = int(self.dataset_size*self.train_test_split)
+            train_size = int(self.dataset_size*train_test_split)
 
             input_p = random.randint(1,16)
             input_f = random.randint(1,16)
@@ -223,7 +228,15 @@ class Arena:
             
             test_loss_1 = torch.nn.functional.mse_loss(pred_1, test_target_1).item()
             test_loss_2 = torch.nn.functional.mse_loss(pred_2, test_target_2).item()
-            
+
+            if pcp==0:
+                score_1 = (1/(test_loss_1))**0.5 # the higher the better
+                score_2 = (1/(test_loss_2))**0.5
+                del executors[0]
+                del executors[0], learner_1, learner_2 #because executors[0] is our previous executors[1] (executors[0] was deleted, which made executors[1] become executors[0]))
+                torch.cuda.empty_cache()
+                return score_1, score_2
+
             # compute the scores
             if outerfunction == "log2":
                 K_1 = math.log2(max(2,arch_1.parameter_count()))
@@ -250,42 +263,78 @@ class Arena:
                 return score_1, score_2, deltaK_1, deltaK_2
             return score_1, score_2
 
-
-    def smooth_selection(self, n_archs=16, max_fights=256, verbose=False):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if device.type=='cuda':
-            max_batch_size = 2048
-        else:
-            max_batch_size = 32
-
-        # generate n_archs random architectures
+    def occam_selection(self, n_archs=16, max_fights=1024, verbose=False, randomizeHP=True, simp_bal=0.3):
         generator = Generator(generation_type=self.generation_type)
-        architectures = []
-
-
-        for i in range(n_archs):
-            architectures.append(generator.generate(self.architecture_size))
-
-        arch_scores = [0 for _ in range(n_archs)]
+        architectures = [generator.generate(self.architecture_size) for _ in range(n_archs)]
+        representability_scores = [0 for _ in range(n_archs)]
+        learnability_scores = [0 for _ in range(n_archs)]
+        
+        
         n_fights = 0
+        total_pairs = min(max_fights, n_archs * (n_archs - 1) // 2)
         for i in range(n_archs):
-            for j in range(i+1, n_archs):
-                score_i, score_j = self.get_scores(architectures[i], architectures[j], randomizeHP=True)
-                if score_j < score_i:
-                    arch_scores[i] += 1
-                else:
-                    arch_scores[j] += 1
+            for j in range(i + 1, n_archs):
+                if verbose:
+                    print(f"Fight {n_fights + 1}/{total_pairs}: arch {i} vs {j}")
+                
+                score_i, score_j = self.get_scores(
+                    architectures[i], architectures[j], randomizeHP=randomizeHP, pcp=0
+                )
+                learnability_scores[i] += score_i
+                learnability_scores[j] += score_j
+                representability_scores[i] += score_j
+                representability_scores[j] += score_i
+                if verbose:
+                    print(f"score_{i} : {score_i}, score_{j} : {score_j}")
+                
                 n_fights += 1
                 if n_fights >= max_fights:
                     break
-            
+            if n_fights >= max_fights:
+                break
+        occam_scores = [((learnability_scores[i]**(1-simp_bal)) * (representability_scores[i]**(simp_bal)))**0.5 for i in range(n_archs)]
+        max_score_idx = occam_scores.index(max(occam_scores))
+        best_learnability_index = learnability_scores.index(max(learnability_scores))
+
+        return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, representability_scores
+        
+
+    def smooth_selection(self, n_archs=16, max_fights=256, verbose=False, randomizeHP=True):
+        generator = Generator(generation_type=self.generation_type)
+        architectures = [generator.generate(self.architecture_size) for _ in range(n_archs)]
+        arch_scores = [0 for _ in range(n_archs)]
+        
+        n_fights = 0
+        total_pairs = min(max_fights, n_archs * (n_archs - 1) // 2)
+        
+        for i in range(n_archs):
+            for j in range(i + 1, n_archs):
+                if verbose:
+                    print(f"Fight {n_fights + 1}/{total_pairs}: arch {i} vs {j}")
                 
-        # get the index of the best architecture
+                score_i, score_j = self.get_scores(
+                    architectures[i], architectures[j], randomizeHP=randomizeHP
+                )
+                if score_i > score_j:
+                    arch_scores[i] += 1
+                else:
+                    arch_scores[j] += 1
+                
+                n_fights += 1
+                if n_fights >= max_fights:
+                    break
+            if n_fights >= max_fights:
+                break
+
         best_arch_index = arch_scores.index(max(arch_scores))
-        return architectures[best_arch_index], arch_scores[best_arch_index]
-
+        
+        if verbose:
+            print(f"Scores: {arch_scores}")
+            print(f"Winner: arch {best_arch_index} with {arch_scores[best_arch_index]} wins")
+        
+        return architectures[best_arch_index], arch_scores, best_arch_index
             
-
+    
 
     def start(self, randomizeHP = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -297,6 +346,9 @@ class Arena:
         winners = []
         winner_scores = [0]
         current_winner_id = 0
+
+        
+            
         # Generate the first architecture
         generator = Generator(generation_type=self.generation_type)
         current_best = generator.generate(self.architecture_size)
@@ -362,7 +414,8 @@ class Arena:
         current_best = architecture
         
         for n_fight in range(n_test):
-            print(f"Test fight n°{n_fight}")
+            if verbose:
+                print(f"Test fight n°{n_fight}")
             architectures = []
             architectures.append(current_best)
             scores = []
@@ -388,7 +441,7 @@ class Arena:
             arch_scores.append(scores)
 
         # We compute the number of times the first architecture was the best
-        print(arch_scores)
+        # print(arch_scores)
         n_wins = 0
         for score in arch_scores:
             if score[0] == max(score):
@@ -396,8 +449,12 @@ class Arena:
         return arch_scores, n_wins
             
     
-    def make_mlp(self,hidden_sizes, inputTens):
-        input_f = inputTens.shape[-1]
+    def make_mlp(self,hidden_sizes, inputTens=None):
+        if inputTens is None:
+            input_f = hidden_sizes[0]
+        else :
+            input_f = inputTens.shape[-1]
+
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         MLP_arch = Architecture()
         inputModule = Input()
@@ -451,7 +508,7 @@ class Arena:
                 n_wins += 1
         return scores, n_wins/mlp_n_tests
 
-    def realDataSet_test(self, architecture, verbose=True):
+    def realDataSet_test(self, architecture, verbose=True, max_iter=100):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
@@ -459,6 +516,15 @@ class Arena:
             max_batch_size = 32
         
         results = {}
+
+        def batched_forward(executor, data, batch_size=2048):
+            outputs = []
+            with torch.no_grad():
+                for i in range(0, len(data), batch_size):
+                    batch = data[i:i+batch_size].to(device)
+                    out = executor.forward(batch)
+                    outputs.append(out[0].cpu())
+            return [torch.cat(outputs, dim=0).to(device)]
 
         ################# 1 - California housing dataset #################
 
@@ -472,44 +538,49 @@ class Arena:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
         X_train = scaler_X.fit_transform(X_train)
         X_test = scaler_X.transform(X_test)
-        y_train = scaler_y.fit_transform(y_train)
-        y_test = scaler_y.transform(y_test)
-
+        y_train = scaler_y.fit_transform(y_train.reshape(-1, 1)).flatten()
+        y_test = scaler_y.transform(y_test.reshape(-1, 1)).flatten()
         # convert to 3D tensors
         train_input = torch.tensor(X_train, dtype=torch.float32).unsqueeze(1).to(device)
-        train_target = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1).to(device)
+        train_target = torch.tensor(y_train, dtype=torch.float32).reshape(-1,1,1).to(device)
 
         test_input = torch.tensor(X_test, dtype=torch.float32).unsqueeze(1).to(device)
-        test_target = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1).to(device)
+        test_target = torch.tensor(y_test, dtype=torch.float32).reshape(-1,1,1).to(device)
 
         
-        executor = Executor(architecture)
+
+        
+        arch_copy = copy.deepcopy(architecture)
+        arch_copy.reset_state()
+        executor = Executor(arch_copy).to(device)
 
         # measure time taken for fitting
         start_fit_time = time.time()
-        executor.fit(train_input, train_target, verbose=verbose, lr=0.01, max_iter=500, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        executor.fit(train_input, train_target, verbose=verbose, lr=0.001, max_iter=max_iter, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
         end_fit_time = time.time()
         fit_delay = end_fit_time - start_fit_time
 
         # measure time taken for testing
         start_test_time = time.time()
-        test_output = executor.forward(test_input)
+        test_output = batched_forward(executor, test_input)
         end_test_time = time.time()
         test_delay = end_test_time - start_test_time
         test_loss = torch.nn.functional.mse_loss(test_output[0], test_target)
 
         results['california_housing'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
-        del executor
+        del executor, train_input, train_target, test_input, test_target
         torch.cuda.empty_cache()
+
         ################# 2 - MNIST #################
+
         # Load MNIST dataset
 
         train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transforms.ToTensor())
         test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transforms.ToTensor())
         
         # minmax scaling
-        train_input_data = train_dataset.data.float() / 255.0
-        test_input_data = test_dataset.data.float() / 255.0
+        train_input_data = train_dataset.data.float().to(device) / 255.0
+        test_input_data = test_dataset.data.float().to(device) / 255.0
         train_target_data = train_dataset.targets
         test_target_data = test_dataset.targets
 
@@ -517,50 +588,55 @@ class Arena:
         train_target_onehot = torch.nn.functional.one_hot(train_target_data, 10).float().unsqueeze(1).to(device)
         test_target_onehot = torch.nn.functional.one_hot(test_target_data, 10).float().unsqueeze(1).to(device)
 
-        executor = Executor(architecture)
+        arch_copy = copy.deepcopy(architecture)
+        arch_copy.reset_state()
+        executor = Executor(arch_copy).to(device)
         # measure time taken for fitting
         start_fit_time = time.time()
-        executor.fit(train_input_data, train_target_onehot, verbose=verbose, lr=0.01, max_iter=500, batch_size=min(len(train_input_data),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        executor.fit(train_input_data, train_target_onehot, verbose=verbose, lr=0.001, max_iter=max_iter, batch_size=min(len(train_input_data),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
         end_fit_time = time.time()
         fit_delay = end_fit_time - start_fit_time
 
         # measure time taken for testing
         start_test_time = time.time()
-        test_output = executor.forward(test_input_data)
+        test_output =batched_forward(executor, test_input_data)
         end_test_time = time.time()
         test_delay = end_test_time - start_test_time
-        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target_onehot)
+        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target_onehot).to(device)
 
         results['mnist'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
-        del executor
+        del executor, train_input_data, train_target_onehot, test_input_data, test_target_onehot
         torch.cuda.empty_cache()
 
         ################# 3 - CIFAR10 #################
+
         # Load CIFAR10 dataset
         train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transforms.ToTensor())
         test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transforms.ToTensor())
         
-        train_input = torch.stack([img for img, _ in train_dataset])
-        train_input = test_input.view(50000, 32 , 96)
+        train_input = torch.stack([img for img, _ in train_dataset])   # [50000, 3, 32, 32]
+        train_input = train_input.permute(0, 2, 1, 3).contiguous().view(50000, 32, 96)
 
         train_target = torch.tensor([label for _, label in train_dataset])
         train_target_onehot = torch.nn.functional.one_hot(train_target, 10).float().unsqueeze(1).to(device)
 
-        test_input = torch.stack([img for img, _ in test_dataset])
-        test_input = test_input.view(10000, 32 , 96)
+        test_input = torch.stack([img for img, _ in test_dataset])     # [10000, 3, 32, 32]
+        test_input = test_input.permute(0, 2, 1, 3).contiguous().view(10000, 32, 96)
         test_target = torch.tensor([label for _, label in test_dataset])
         test_target_onehot = torch.nn.functional.one_hot(test_target, 10).float().unsqueeze(1).to(device)
 
-        executor = Executor(architecture)
+        arch_copy = copy.deepcopy(architecture)
+        arch_copy.reset_state()
+        executor = Executor(arch_copy).to(device)
         # measure time taken for fitting
         start_fit_time = time.time()
-        executor.fit(train_input, train_target_onehot, verbose=verbose, lr=0.01, max_iter=500, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+        executor.fit(train_input, train_target_onehot, verbose=verbose, lr=0.001, max_iter=max_iter, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
         end_fit_time = time.time()
         fit_delay = end_fit_time - start_fit_time
 
         # measure time taken for testing
         start_test_time = time.time()
-        test_output = executor.forward(test_input)
+        test_output = batched_forward(executor, test_input)
         end_test_time = time.time()
         test_delay = end_test_time - start_test_time
         test_loss = torch.nn.functional.mse_loss(test_output[0], test_target_onehot)
@@ -570,6 +646,27 @@ class Arena:
         torch.cuda.empty_cache()
 
         return results
+
+    def get_distinction(self,architecture, n_archs=32, verbose = False):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if device.type=='cuda':
+            max_batch_size = 2048
+        else:
+            max_batch_size = 32
+        arch_scores = []
+        contestant_scores = []
+        generator = Generator(generation_type=self.generation_type)
+
+        for n_fight in range(n_archs):
+            if verbose:
+                print(f"Fight n°{n_fight+1}/{n_archs}")
+            contestant = generator.generate(self.architecture_size)
+            arch_score, contestant_score = self.get_scores(architecture, contestant)
+            arch_scores.append(arch_score)
+            contestant_scores.append(contestant_score)
+        return arch_scores, contestant_scores
+
+        
 
 
 

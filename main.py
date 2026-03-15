@@ -98,79 +98,23 @@ def twolayersMLP():
 
 #twolayersMLP()
 
+arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
 '''
-myGenerator = Generator()
+mlp = arena.make_mlp([32,16])
+winner = Architecture.load("winner_24_opponnents_12_nodes_91wr.pkl")
 
-architecture = myGenerator.generate_order_agnostic(n_nodes=8)
+mlp_scores, mlp_contestant_scores = arena.get_distinction(mlp, verbose=True)
+winner_scores, winner_contestant_scores = arena.get_distinction(winner, verbose=True)
 
-
-architecture = myGenerator.generate(n_nodes=8)
-#print(architecture.isValid())
-#print(list(networkx.topological_sort(architecture)))
-architecture.describe()
-inputTens = torch.randn(64,2,32)
-outputTargetTens = inputTens+torch.randn(64,2,32)*0.1
-
-executor = Executor(architecture)
-executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=20, batch_size=8, patience = 32, min_delta = 1e-7, cpu = False)
-#executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.01, max_iter=100, batch_size=8, patience = 10, min_delta = 1e-7, cpu = True)
-
-arena = Arena(n_fights=12, architecture_size=12, dataset_size=256, arena_contestants=3, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False, pcp=1, cpu=False)
-arena.calibrate_pcp(n_fights=68, verbose=False, finalvalsize=40) #PCP already calibrated at 0.4 + sqrt
-
-# test : do the mlps learn at all?
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-arena = Arena(n_fights=1, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-input_p = random.randint(1,16)
-input_f = random.randint(1,16)
-input = torch.randn(arena.dataset_size, input_p, input_f,device=device)
-outputTargetTens = (input+torch.randn(arena.dataset_size,input_p,input_f,device=device)*0.01)
-inputTensTrain = input[:128].to(device)
-inputTensTest = input[128:].to(device)
-outputTargetTensTrain = outputTargetTens[:128].to(device)
-outputTargetTensTest = outputTargetTens[128:].to(device)
-
-
-MLP = arena.make_mlp([32,32,16],input)
-executor = Executor(MLP).to(device)
-#testing before fitting on the test set
-executor.set_Output_Adapter(inputTensTrain, outputTargetTensTrain.shape, force=True)
-output = executor.forward(inputTensTest)
-loss = torch.nn.functional.mse_loss(output[0], outputTargetTensTest)
-print(f"Loss: {loss.item()}")
-
-#fitting on the train set
-executor.fit(inputTensTrain, outputTargetTensTrain, verbose=True, batch_size=128, lr=0.02, max_iter=500, patience = 20, min_delta = 1e-6, cpu = False)
-
-output = executor.forward(inputTensTest)
-loss = torch.nn.functional.mse_loss(output[0], outputTargetTensTest)
-print(f"Loss: {loss.item()}")
+print(f"MLP avg score: {sum(mlp_scores)/len(mlp_scores)}, Winner avg score: {sum(winner_scores)/len(winner_scores)}")
+print(f"MLP avg contestant score: {sum(mlp_contestant_scores)/len(mlp_contestant_scores)}, Winner avg contestant score: {sum(winner_contestant_scores)/len(winner_contestant_scores)}")
 '''
-arena = Arena(n_fights=40, architecture_size=16, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-winrate, winners = arena.start(randomizeHP = True)
 
+winner, occam_scores, winner_idx, learnabilities, representabilities = arena.occam_selection(n_archs=6, max_fights=1024, verbose=True, randomizeHP=True, simp_bal=0.3)
+print(f"Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Representabilities : {representabilities} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}, Winner score: {occam_scores[winner_idx]}")
+winner.save("O_winner_4archs.pkl")
 
-WinArch = winners[-1]
-WinArch.describe()
-WinArch.save("winner_32_rounds_16_nodes.pkl")
-arch_scores, n_wins = arena.test(WinArch,n_test=30)
-'''
-mlp_scores_small, mlpwinrate_small = arena.test_mlp(WinArch,mlp_n_tests=40, mlp_hidden_sizes=[16,8])
-mlp_scores_medium, mlpwinrate_medium = arena.test_mlp(WinArch,mlp_n_tests=40, mlp_hidden_sizes=[32,16,16])
-#mlp_scores_large, mlpwinrate_large = arena.test_mlp(WinArch,mlp_n_tests=40, mlp_hidden_sizes=[64,64,32])
-
-print(f"Winner winrate: {n_wins/10}")
-print(f"Winner MLP_small winrate: {mlpwinrate_small}")
-print(f"Winner MLP_medium winrate: {mlpwinrate_medium}")
-#print(f"Winner MLP_large winrate: {mlpwinrate_large}")
-
-print(f"Winner MLP score: {mlp_scores_small}")
-print(f"Winner MLP score: {mlp_scores_medium}")
-#print(f"Winner MLP score: {mlp_scores_large}")
-
-'''
-# TODO TOTEST - randomize learning weights, batch size, patience, and check the performance of a winner against random architectures
-# TODO TOTEST - check the performance of a winner against ranndom architectures and MLP on 3 real world datasets
-# TODO TOTEST- smooth the learning, maybe generate X random architectures, test every couple, pick the one with the best winrate
-
+# TODO - make simplicity and learnability in normalized log space to prevent outlier dominance
 # TODO - Find a way to make architectures less dense
+# TODO - find the % of random archs beating MLP at similar sizes
+
