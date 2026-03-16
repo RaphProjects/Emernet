@@ -89,7 +89,9 @@ class Generator:
         self.architecture = Architecture()
         # Always start with an input node
         self.architecture.add_node(0, Input())
-        rooting_p = 0.5
+        
+        rooting_p = random.choice([0.25, 0.3, 0.35, 0.40, 0.45, 0.5, 0.55, 0.6])
+        print(f"rooting probability: {rooting_p}")
         AvailableModules = [MatMul, Add, Activation, LearnableParameter]
         for i in range(n_nodes):
             # Add a new node

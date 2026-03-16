@@ -198,7 +198,7 @@ class Arena:
             input_f = random.randint(1,16)
             input = torch.randn(self.dataset_size, input_p, input_f).to(device)
 
-        train_size = int(self.dataset_size*self.train_test_split)
+        train_size = int(self.dataset_size*train_test_split)
         train_input = input[:train_size]
         test_input = input[train_size:]
 
@@ -253,8 +253,8 @@ class Arena:
 
             deltaK_1 = (K_1/K_2) + math.exp(-K_1*K_2)
             deltaK_2 = (K_2/K_1) + math.exp(-K_2*K_1)
-            score_1 = (1/(test_loss_1*( deltaK_1 ** self.pcp) ))**0.5
-            score_2 = (1/(test_loss_2*( deltaK_2 ** self.pcp) ))**0.5
+            score_1 = (1/(test_loss_1*( deltaK_1 ** pcp) ))**0.5
+            score_2 = (1/(test_loss_2*( deltaK_2 ** pcp) ))**0.5
 
             del executors[0]
             del executors[0], learner_1, learner_2 #because executors[0] is our previous executors[1] (executors[0] was deleted, which made executors[1] become executors[0]))
@@ -263,15 +263,15 @@ class Arena:
                 return score_1, score_2, deltaK_1, deltaK_2
             return score_1, score_2
 
-    def occam_selection(self, n_archs=16, max_fights=1024, verbose=False, randomizeHP=True, simp_bal=0.3):
+    def occam_selection(self, n_archs=16, verbose=False, randomizeHP=True, simp_bal=0.3):
         generator = Generator(generation_type=self.generation_type)
         architectures = [generator.generate(self.architecture_size) for _ in range(n_archs)]
-        representability_scores = [0 for _ in range(n_archs)]
+        simplicity_scores = [0 for _ in range(n_archs)]
         learnability_scores = [0 for _ in range(n_archs)]
         
         
         n_fights = 0
-        total_pairs = min(max_fights, n_archs * (n_archs - 1) // 2)
+        total_pairs =  n_archs * (n_archs - 1) // 2
         for i in range(n_archs):
             for j in range(i + 1, n_archs):
                 if verbose:
@@ -280,24 +280,83 @@ class Arena:
                 score_i, score_j = self.get_scores(
                     architectures[i], architectures[j], randomizeHP=randomizeHP, pcp=0
                 )
-                learnability_scores[i] += score_i
-                learnability_scores[j] += score_j
-                representability_scores[i] += score_j
-                representability_scores[j] += score_i
+                learnability_scores[i] += math.log((max(score_i,1e-10)))
+                learnability_scores[j] += math.log((max(score_j,1e-10)))
+                simplicity_scores[i] += math.log((max(score_j,1e-10)))
+                simplicity_scores[j] += math.log((max(score_i,1e-10)))
                 if verbose:
                     print(f"score_{i} : {score_i}, score_{j} : {score_j}")
                 
                 n_fights += 1
-                if n_fights >= max_fights:
-                    break
-            if n_fights >= max_fights:
-                break
-        occam_scores = [((learnability_scores[i]**(1-simp_bal)) * (representability_scores[i]**(simp_bal)))**0.5 for i in range(n_archs)]
-        max_score_idx = occam_scores.index(max(occam_scores))
-        best_learnability_index = learnability_scores.index(max(learnability_scores))
 
-        return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, representability_scores
+
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
         
+        learnability_scores = [score/(n_archs-1) for score in learnability_scores]
+        simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
+        norm_learn = z_normalize(learnability_scores)
+        norm_simp = z_normalize(simplicity_scores)
+        occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal)))
+                         for i in range(n_archs)]
+        max_score_idx = occam_scores.index(max(occam_scores))
+
+        if verbose:
+            print(f"average learnability score: {sum(norm_learn)/len(norm_learn)}")
+            print(f"average simplicity score: {sum(norm_simp)/len(norm_simp)}")
+
+
+        return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, simplicity_scores
+        
+    def occam_test(self, ori_architectures, n_archs=8, verbose=False, randomizeHP=True, simp_bal=0.3):
+
+        if not isinstance(ori_architectures, list):
+            ori_architectures = [ori_architectures]
+        
+        generator = Generator(generation_type=self.generation_type)
+        architectures = copy.deepcopy(ori_architectures)
+
+        for i in range(n_archs-len(architectures)):
+            architectures.append(generator.generate(self.architecture_size))
+
+        learnabilities = [0 for _ in range(n_archs)]
+        simplicities = [0 for _ in range(n_archs)]
+        
+        n_fight = 0
+        total_pairs =  n_archs * (n_archs - 1) // 2
+        for i in range(n_archs):
+            for j in range(i + 1, n_archs):
+                if verbose:
+                    print(f"Fight {n_fight + 1}/{total_pairs}: arch {i} vs {j}")
+                score_i, score_j = self.get_scores(
+                    architectures[i], architectures[j], randomizeHP=randomizeHP, pcp=0
+                )
+
+                learnabilities[i] += math.log((max(score_i,1e-10)))
+                learnabilities[j] += math.log((max(score_j,1e-10)))
+                simplicities[i] += math.log((max(score_j,1e-10)))
+                simplicities[j] += math.log((max(score_i,1e-10)))
+                if verbose:
+                    print(f"score_{i} : {math.log((max(score_i,1e-10)))}, score_{j} : {math.log((max(score_j,1e-10)))}")
+
+                n_fight += 1
+        learnabilities = [score/(n_archs-1) for score in learnabilities]
+        simplicities = [score/(n_archs-1) for score in simplicities]
+        occam_scores = [((learnabilities[i]*(1-simp_bal)) + (simplicities[i]*(simp_bal)))
+                         for i in range(n_archs)]
+        
+        occam_scores_sorted = sorted(occam_scores)
+        wrs = [0 for _ in range(len(ori_architectures))]
+        for tested_arch in range(len(ori_architectures)):
+            occam_score = occam_scores[tested_arch]
+            rank = occam_scores_sorted.index(occam_score)
+            wrs[tested_arch] = rank/(len(occam_scores)-1)
+
+        return wrs, occam_scores, learnabilities, simplicities
+
 
     def smooth_selection(self, n_archs=16, max_fights=256, verbose=False, randomizeHP=True):
         generator = Generator(generation_type=self.generation_type)
