@@ -19,20 +19,28 @@ class Generator:
         if self.generation_type == "dense":
             while not generated:
                 try:
-                    generation = self.generate_dense(n_nodes)
+                    arch = self.generate_dense(n_nodes)
+                    test_input = torch.randn(2, 4, 4)
+                    ex = Executor(arch)
+                    out = ex.forward(test_input)
+                    if torch.isfinite(out[0]).all():
+                        return arch
                     generated = True
                 except Exception as e:
                     pass
-            return generation
         
         elif self.generation_type == "agnostic":
             while not generated:
                 try:
-                    generation = self.generate_order_agnostic(n_nodes)
+                    arch = self.generate_order_agnostic(n_nodes)
+                    test_input = torch.randn(2, 4, 4)
+                    ex = Executor(arch)
+                    out = ex.forward(test_input)
+                    if torch.isfinite(out[0]).all():
+                        return arch
                     generated = True
                 except Exception as e:
                     pass
-            return generation
         else:
             raise Exception(f"Unknown generation type {self.generation_type}")
 

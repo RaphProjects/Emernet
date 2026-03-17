@@ -109,21 +109,24 @@ winner_scores, winner_contestant_scores = arena.get_distinction(winner, verbose=
 print(f"MLP avg score: {sum(mlp_scores)/len(mlp_scores)}, Winner avg score: {sum(winner_scores)/len(winner_scores)}")
 print(f"MLP avg contestant score: {sum(mlp_contestant_scores)/len(mlp_contestant_scores)}, Winner avg contestant score: {sum(winner_contestant_scores)/len(winner_contestant_scores)}")
 
-'''
 
-winner, occam_scores, winner_idx, learnabilities, simplicites = arena.occam_selection(n_archs=23, verbose=True, randomizeHP=True, simp_bal=0.3)
+
+winner, occam_scores, winner_idx, learnabilities, simplicites = arena.occam_selection(n_archs=24, verbose=True, randomizeHP=True, simp_bal=0.3)
 print(f"Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Simplicities : {simplicites} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}, Winner score: {occam_scores[winner_idx]}")
-winner.save("O_winner_23archs.pkl")
-
+winner.save("O_winner_24archs.pkl")
 '''
-winner = Architecture.load("O_winner_20archs.pkl")
 
-mlp = arena.make_mlp([32,16])
 
-wrs, occam_scores, learnabilities, simplicities = arena.occam_test([winner,mlp], n_archs=16, verbose=True, randomizeHP=True, simp_bal=0.3)
+winner = Architecture.load("O_winner_23archs.pkl")
+
+mlp = arena.make_mlp([32,16,8])
+
+wrs, occam_scores, learnabilities, simplicities = arena.occam_test([winner,mlp], n_archs=18, verbose=True, randomizeHP=True, simp_bal=0.3)
 print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Simplicities : {simplicities} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}")
 
 '''
+'''
+
 # TODO - make simplicity and learnability in normalized log space to prevent outlier dominance
 # TODO - Find a way to make architectures less dense
 # TODO - find the % of random archs beating MLP at similar sizes

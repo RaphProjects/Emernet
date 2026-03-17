@@ -216,11 +216,11 @@ class Arena:
         learner_1 = Executor(copy.deepcopy(arch_1)).to(device)
         learner_2 = Executor(copy.deepcopy(arch_2)).to(device)
         if randomizeHP:
-            learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = False)
-            learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = False)
+            learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = self.cpu)
+            learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = self.cpu)
         else:
-            learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
-            learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
+            learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = self.cpu)
+            learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = self.cpu)
 
         with torch.no_grad():
             pred_1 = learner_1.forward(test_input)[0]
@@ -228,6 +228,12 @@ class Arena:
             
             test_loss_1 = torch.nn.functional.mse_loss(pred_1, test_target_1).item()
             test_loss_2 = torch.nn.functional.mse_loss(pred_2, test_target_2).item()
+
+            # Guard against NaN / Inf / zero losses
+            if not math.isfinite(test_loss_1) or test_loss_1 <= 0:
+                test_loss_1 = 1e10
+            if not math.isfinite(test_loss_2) or test_loss_2 <= 0:
+                test_loss_2 = 1e10
 
             if pcp==0:
                 score_1 = (1/(test_loss_1))**0.5 # the higher the better

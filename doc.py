@@ -14,7 +14,10 @@ n = (24*T(n))/5
 
 
 20 - 0.955191577769701
-
+23 - 1.3011372052075836 - Winrates : [0.9333333333333333, 0.6666666666666666]
+against mlp :
+average learnability score: -2.790642113527907e-16
+average simplicity score: -9.412760426169805e-17
 '''
 import math
 
