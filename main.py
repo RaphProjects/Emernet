@@ -95,11 +95,18 @@ def twolayersMLP():
     executor = Executor(architecture)
     executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=1000, batch_size=16, patience = 10, min_delta = 1e-7)
 
-
+def test_real_correlation(architectures):
+    # We evaluate every architecture on both the arena and the real data set
+    # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
+    
+    for arch in architectures:
+        pass
+        #TODO finir la fonction
 #twolayersMLP()
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
 '''
+
 mlp = arena.make_mlp([32,16])
 winner = Architecture.load("winner_24_opponnents_12_nodes_91wr.pkl")
 
@@ -110,12 +117,13 @@ print(f"MLP avg score: {sum(mlp_scores)/len(mlp_scores)}, Winner avg score: {sum
 print(f"MLP avg contestant score: {sum(mlp_contestant_scores)/len(mlp_contestant_scores)}, Winner avg contestant score: {sum(winner_contestant_scores)/len(winner_contestant_scores)}")
 
 
-
-winner, occam_scores, winner_idx, learnabilities, simplicites = arena.occam_selection(n_archs=24, verbose=True, randomizeHP=True, simp_bal=0.3)
-print(f"Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Simplicities : {simplicites} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}, Winner score: {occam_scores[winner_idx]}")
-winner.save("O_winner_24archs.pkl")
 '''
 
+winner, occam_scores, winner_idx, learnabilities, simplicites = arena.occam_selection(n_archs=4, verbose=True, randomizeHP=True, simp_bal=0.3)
+print(f"Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Simplicities : {simplicites} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}, Winner score: {occam_scores[winner_idx]}")
+winner.save("O_winner_4archs.pkl")
+
+'''
 
 winner = Architecture.load("O_winner_23archs.pkl")
 
@@ -124,7 +132,7 @@ mlp = arena.make_mlp([32,16,8])
 wrs, occam_scores, learnabilities, simplicities = arena.occam_test([winner,mlp], n_archs=18, verbose=True, randomizeHP=True, simp_bal=0.3)
 print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Simplicities : {simplicities} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}")
 
-'''
+
 '''
 
 # TODO - make simplicity and learnability in normalized log space to prevent outlier dominance
