@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from collections import defaultdict
 
 from modules.base import ModuleType
 from modules.operations import *
@@ -95,39 +96,7 @@ def twolayersMLP():
     executor = Executor(architecture)
     executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=1000, batch_size=16, patience = 10, min_delta = 1e-7)
 
-def test_real_correlation(architectures,n_test=16,simp_bal=0.3, verbose = True):
-    # We evaluate every architecture on both the arena and the real data set
-    # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
 
-    ############################ Arena metrics ############################
-    learnabilities = []
-    simplicities = []
-    occam_scores = []
-    for arch in architectures: 
-        wrs, occam_scores_round, learnabilities_round, simplicities_round = arena.occam_test([arch], n_archs=n_test, verbose=False, randomizeHP=True, simp_bal=simp_bal)
-        learnabilities.append(learnabilities_round[0])
-        simplicities.append(simplicities_round[0])
-        occam_scores.append(occam_scores_round[0])
-    arena_metrics = {"learnability": learnabilities, "simplicity": simplicities, "occam_score": occam_scores}
-    ############################ Real data set metrics ############################
-
-    real_dataset_metrics = {} # dict of ["dataset-metrics"]->list of values
-    for arch in architectures:
-        res = arena.realDataSet_test(arch, verbose=False)
-        for dataset in res.keys():
-            for metric in res[dataset].keys():
-                real_dataset_metrics[f"{dataset}-{metric}"].append(res[dataset][metric])
-
-    
-    ########################### Compute correlations ##############################
-
-    correlations = {} # dict of ["arenametric-dataset-realdatametric"]->correlation
-    for arenametric in arena_metrics:
-        for realdatametric in real_dataset_metrics:
-            correlations[f"{arenametric}-{realdatametric}"] = pearsonr(arena_metrics[arenametric], real_dataset_metrics[realdatametric])[0]
-    if verbose:
-        print(correlations)
-    return correlations
     
 #twolayersMLP()
 
