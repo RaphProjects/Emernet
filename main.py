@@ -100,7 +100,20 @@ def twolayersMLP():
     
 #twolayersMLP()
 
-arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=256, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+generator = Generator(generation_type="agnostic")
+architectures = [generator.generate(n_nodes=12) for _ in range(1)]
+architectures.append(Architecture.load("O_winner_2archs.pkl"))
+architectures.append(Architecture.load("O_winner_3archs.pkl"))
+'''
+architectures.append(Architecture.load("O_winner_4archs.pkl"))
+
+architectures.append(Architecture.load("O_winner_20archs.pkl"))
+architectures.append(Architecture.load("O_winner_23archs.pkl"))
+architectures.append(Architecture.load("O_winner_24archs.pkl"))
+'''
+print(arena.test_real_correlation(architectures=architectures, n_archs_test=4, simp_bal=0.3, verbose = True, real_iter = 60))
+
 '''
 
 mlp = arena.make_mlp([32,16])
@@ -114,12 +127,12 @@ print(f"MLP avg contestant score: {sum(mlp_contestant_scores)/len(mlp_contestant
 
 
 '''
-
+'''
 winner, occam_scores, winner_idx, learnabilities, simplicites = arena.occam_selection(n_archs=4, verbose=True, randomizeHP=True, simp_bal=0.3)
 print(f"Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Simplicities : {simplicites} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}, Winner score: {occam_scores[winner_idx]}")
 winner.save("O_winner_4archs.pkl")
 
-'''
+
 
 winner = Architecture.load("O_winner_23archs.pkl")
 

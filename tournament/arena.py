@@ -11,7 +11,9 @@ import numpy as np
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
-from scipy.stats import pearsonr
+from scipy.stats import spearmanr
+import csv
+import os
 
 from modules.base import ModuleType
 from modules.operations import *
@@ -352,7 +354,18 @@ class Arena:
                 n_fight += 1
         learnabilities = [score/(n_archs-1) for score in learnabilities]
         simplicities = [score/(n_archs-1) for score in simplicities]
-        occam_scores = [((learnabilities[i]*(1-simp_bal)) + (simplicities[i]*(simp_bal)))
+
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
+
+
+
+        norm_learn = z_normalize(learnabilities)
+        norm_simp = z_normalize(simplicities)
+        occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal)))
                          for i in range(n_archs)]
         
         occam_scores_sorted = sorted(occam_scores)
@@ -362,7 +375,9 @@ class Arena:
             rank = occam_scores_sorted.index(occam_score)
             wrs[tested_arch] = rank/(len(occam_scores)-1)
 
-        return wrs, occam_scores, learnabilities, simplicities
+
+
+        return wrs, occam_scores, norm_learn, norm_simp
 
 
     def smooth_selection(self, n_archs=16, max_fights=256, verbose=False, randomizeHP=True):
@@ -733,7 +748,7 @@ class Arena:
         return arch_scores, contestant_scores
 
 
-    def test_real_correlation(self,architectures,n_test=16,simp_bal=0.3, verbose = True):
+    def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=0.3, real_iter = 150, verbose = True, save_path="correlation_data.csv"):
         # We evaluate every architecture on both the arena and the real data set
         # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
 
@@ -741,37 +756,130 @@ class Arena:
         learnabilities = []
         simplicities = []
         occam_scores = []
-        for arch in architectures: 
-            wrs, occam_scores_round, learnabilities_round, simplicities_round = self.occam_test([arch], n_archs=n_test, verbose=False, randomizeHP=True, simp_bal=simp_bal)
-            learnabilities.append(learnabilities_round[0])
-            simplicities.append(simplicities_round[0])
-            occam_scores.append(occam_scores_round[0])
+        generator = Generator(generation_type=self.generation_type)
+        fixed_opponents = [generator.generate(self.architecture_size) for _ in range(n_archs_test - 1)]
+        n_opp = len(fixed_opponents)
+
+        # Precompute opponent-vs-opponent scores
+        # opp_log_scores[i][j] = log(score of opponent i when learning opponent j)
+        # opp_log_scores[j][i] = log(score of opponent j when learning opponent i)
+        opp_log_scores = [[0.0] * n_opp for _ in range(n_opp)]
+        for a in range(n_opp):
+            if verbose:
+                print(f"Opponent {a+1}/{n_opp}")
+            for b in range(a + 1, n_opp):
+                score_a, score_b = self.get_scores(fixed_opponents[a], fixed_opponents[b],randomizeHP=False, pcp=0)
+                opp_log_scores[a][b] = math.log(max(score_a, 1e-10))
+                opp_log_scores[b][a] = math.log(max(score_b, 1e-10))
+        
+        if verbose:
+            print("Opponent cache built.")
+
+        # Z-normalize, used later but defined now to avoid recomputing it
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
+
+        for i, arch in enumerate(architectures):
+            if verbose:
+                print(f"arena-Testing architecture {i+1}/{len(architectures)}")
+            tested_learn_scores = []
+            tested_simp_scores = []
+            for j in range(n_opp):
+                score_tested, score_opp = self.get_scores(arch, fixed_opponents[j], randomizeHP=False, pcp=0)
+                tested_learn_scores.append(math.log(max(score_tested, 1e-10)))
+                tested_simp_scores.append(math.log(max(score_opp, 1e-10)))
+
+            pool_size = n_opp + 1  # should equal n_archs_test
+
+            raw_learn = [0.0] * pool_size
+            raw_simp = [0.0] * pool_size
+
+            for j in range(n_opp):
+                raw_learn[0] += tested_learn_scores[j]       # tested learned opp_j
+                raw_simp[0] += tested_simp_scores[j]         # opp_j learned tested
+                raw_learn[j + 1] += tested_simp_scores[j]    # opp_j learned tested
+                raw_simp[j + 1] += tested_learn_scores[j]    # tested learned opp_j
+
+            # Opponent vs opponent (cached)
+            for a in range(n_opp):
+                for b in range(a + 1, n_opp):
+                    raw_learn[a + 1] += opp_log_scores[a][b]
+                    raw_learn[b + 1] += opp_log_scores[b][a]
+                    raw_simp[a + 1] += opp_log_scores[b][a]
+                    raw_simp[b + 1] += opp_log_scores[a][b]
+
+            # Normalize by number of opponents
+            raw_learn = [s / (pool_size - 1) for s in raw_learn]
+            raw_simp = [s / (pool_size - 1) for s in raw_simp]
+
+            
+
+            norm_learn = z_normalize(raw_learn)
+            norm_simp = z_normalize(raw_simp)
+
+            occam = [(1 - simp_bal) * norm_learn[k] + simp_bal * norm_simp[k] for k in range(pool_size)]
+
+            learnabilities.append(norm_learn[0])
+            simplicities.append(norm_simp[0])
+            occam_scores.append(occam[0])
+                
+
         arena_metrics = {"learnability": learnabilities, "simplicity": simplicities, "occam_score": occam_scores}
         ############################ Real data set metrics ############################
 
-        real_dataset_metrics = {} # dict of ["dataset-metrics"]->list of values
-        real_dataset_metrics = defaultdict(list)
-        for arch in architectures:
-            res = self.realDataSet_test(arch, verbose=False)
+
+        real_dataset_metrics = defaultdict(list)# dict of ["dataset-metrics"]->list of values
+        for i, arch in enumerate(architectures):
+            if verbose:
+                print(f"real-Testing architecture {i}")
+            
+            res = self.realDataSet_test(arch, verbose=False, max_iter=real_iter)
             for dataset in res.keys():
                 for metric in res[dataset].keys():
                     real_dataset_metrics[f"{dataset}-{metric}"].append(res[dataset][metric])
 
         
         ########################### Compute correlations ##############################
-
+        if verbose:
+            print(f"Computing correlations...")
         correlations = {} # dict of ["arenametric-dataset-realdatametric"]->correlation
         for arenametric in arena_metrics:
             for realdatametric in real_dataset_metrics:
-                correlations[f"{arenametric}-{realdatametric}"] = pearsonr(arena_metrics[arenametric], real_dataset_metrics[realdatametric])[0]
+                correlations[f"{arenametric}-{realdatametric}"] = spearmanr(arena_metrics[arenametric], real_dataset_metrics[realdatametric])[0]
         if verbose:
             print(correlations)
-        return correlations
         
+        
+        ########################## Save to CSV ##############################²
+        headers = ["arch_id", "learnability", "simplicity", "occam_score"]
+        headers += sorted(real_dataset_metrics.keys())
+
+        rows = []
+
+        for i in range(len(architectures)):
+            row = {
+                "arch_id": i,
+                "learnability": learnabilities[i],
+                "simplicity": simplicities[i],
+                "occam_score": occam_scores[i],
+            }
+            for key in sorted(real_dataset_metrics.keys()):
+                row[key] = real_dataset_metrics[key][i]
+            rows.append(row)
+        
+        with open(save_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(rows)
+        if verbose:
+            print(f"Saved {len(rows)} rows to {save_path}")
 
 
-
-                    
+        
+        return correlations
                     
                     
 
