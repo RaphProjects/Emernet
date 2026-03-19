@@ -105,14 +105,15 @@ generator = Generator(generation_type="agnostic")
 architectures = [generator.generate(n_nodes=12) for _ in range(1)]
 architectures.append(Architecture.load("O_winner_2archs.pkl"))
 architectures.append(Architecture.load("O_winner_3archs.pkl"))
-'''
-architectures.append(Architecture.load("O_winner_4archs.pkl"))
 
+architectures.append(Architecture.load("O_winner_4archs.pkl"))
+'''
 architectures.append(Architecture.load("O_winner_20archs.pkl"))
 architectures.append(Architecture.load("O_winner_23archs.pkl"))
-architectures.append(Architecture.load("O_winner_24archs.pkl"))
+
 '''
-print(arena.test_real_correlation(architectures=architectures, n_archs_test=4, simp_bal=0.3, verbose = True, real_iter = 60))
+architectures.append(Architecture.load("O_winner_24archs.pkl"))
+print(arena.test_real_correlation(architectures=architectures, n_archs_test=4, simp_bal=0.3, verbose = True, real_iter = 50))
 
 '''
 
@@ -143,6 +144,8 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 
 
 '''
+
+# NOTE - O_winner_2 archs might be OP for no reason
 
 # TODO - make simplicity and learnability in normalized log space to prevent outlier dominance
 # TODO - Find a way to make architectures less dense
