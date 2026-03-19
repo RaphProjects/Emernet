@@ -145,7 +145,7 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 
 '''
 
-# NOTE - O_winner_2 archs might be OP for no reason
+# NOTE - O_winner_2archs might be OP for no reason
 
 # TODO - make simplicity and learnability in normalized log space to prevent outlier dominance
 # TODO - Find a way to make architectures less dense
