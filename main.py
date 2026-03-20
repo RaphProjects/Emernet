@@ -113,7 +113,7 @@ architectures.append(Architecture.load("O_winner_23archs.pkl"))
 
 '''
 architectures.append(Architecture.load("O_winner_24archs.pkl"))
-print(arena.test_real_correlation(architectures=architectures, n_archs_test=4, simp_bal=0.3, verbose = True, real_iter = 50))
+print(arena.test_real_correlation(architectures=architectures, n_archs_test=5, simp_bal=0.3, verbose = True, real_iter = 60))
 
 '''
 

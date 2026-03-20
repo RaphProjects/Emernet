@@ -20,10 +20,7 @@ class Executor(torch.nn.Module):
         self.architecture = architecture
         self.output_f_linproj = torch.nn.Identity() # Dummies
         self.output_p_linproj = torch.nn.Identity()
-        '''
-        self.output_f_linproj = None
-        self.output_p_linproj = None
-        '''
+
         self.output_index = 0
         for node in architecture.nodes:
             module = architecture.nodes[node]['module']
@@ -140,10 +137,13 @@ class Executor(torch.nn.Module):
 
     def randomize_weights(self):
         for param in self.parameters():
-            torch.nn.init.normal_(param, mean=0, std=0.01)
+            if param.dim() >= 2:
+                torch.nn.init.xavier_normal_(param)
+            else:
+                torch.nn.init.normal_(param, mean=0, std=0.01)
 
 
-    def fit(self, input, target, verbose=False, lr=0.001, max_iter=600, batch_size=16, patience = 10, min_delta = 1e-7, device = None, cpu = False):
+    def fit(self, input, target, verbose=False, lr=0.001, max_iter=600, batch_size=16, patience = 10, min_delta = 1e-7, device = None, cpu = False, max_retries = 3):
         executor = self
         #executor.set_Output_Adapter(input, target.shape)
         #output = executor.forward(input)
@@ -158,77 +158,116 @@ class Executor(torch.nn.Module):
         print(f"f_proj is None: {executor.output_f_linproj is None}")
         '''
 
-        optimizer = torch.optim.Adam(executor.parameters(), lr=lr) 
-        best_loss = float('inf')
 
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, 
-            mode='min',       # we want loss to go DOWN
-            patience=6,       # wait 6 epochs before reducing
-            factor=0.6        # new_lr = old_lr * 0.6
-        )
 
         wait = 0
         stop_training = False
 
         dataset = TensorDataset(input, target)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        attempts = 0
+        trained = False
+        for attempt in range(max_retries):
+            if attempt > 0:
+                self.randomize_weights()
+                if verbose:
+                    print(f"  Retry {attempt}/{max_retries - 1}: reinitialized weights")
+            optimizer = torch.optim.Adam(executor.parameters(), lr=lr) 
+            best_loss = float('inf')
 
-        for epoch in range(max_iter):
-            epoch_loss = 0
-            for batch_input, batch_target in dataloader:
-                batch_input = batch_input.to(device)
-                batch_target = batch_target.to(device)
-                output = executor.forward(batch_input)
-                if output[0].shape != batch_target.shape:
-                    print("\n=== SHAPE MISMATCH DETECTED ===")
-                    print(f"  output shape:  {output[0].shape}")
-                    print(f"  target shape:  {batch_target.shape}")
-                    print(f"  adapter flag:  {executor.adapter}")
-                    print(f"  output_index:  {executor.output_index}")
-                    print(f"  f_proj:        {executor.output_f_linproj}")
-                    print(f"  p_proj:        {executor.output_p_linproj}")
-                    print(f"  input shape:   {batch_input.shape}")
-                    
-                    # Check what raw outputs look like
-                    with torch.no_grad():
-                        raw = executor.forward(batch_input, adapting=True)
-                        print(f"  raw output count: {len(raw)}")
-                        for idx, r in enumerate(raw):
-                            marker = " ← selected" if idx == executor.output_index else ""
-                            print(f"    raw[{idx}] shape: {r.shape}{marker}")
-                    
-                    print(f"  architecture:")
-                    executor.architecture.describe()
-                    print("=== END DIAGNOSTIC ===\n")
-                    
-                    # Skip this batch to avoid crash
-                    continue
-                loss = torch.nn.functional.mse_loss(output[0], batch_target)
-
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, 
+                mode='min',       # we want loss to go DOWN
+                patience=6,       # wait 6 epochs before reducing
+                factor=0.6        # new_lr = old_lr * 0.6
+            )
+            wait = 0
+            best_loss = float('inf')
+            wait = 0
+            nan_detected = False
+            for epoch in range(max_iter):
+                epoch_loss = 0
+                n_valid_batches = 0
                 
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(executor.parameters(), max_norm=1.0)
-                optimizer.step()
-                optimizer.zero_grad()
-                epoch_loss += loss.item()
-    
-            avg_loss = epoch_loss / len(dataloader)
-            scheduler.step(avg_loss)
-            if verbose and epoch % 5 == 0:
-                    current_lr = optimizer.param_groups[0]['lr']
-                    print(f"Epoch {epoch}/{max_iter} | Loss: {avg_loss:.6f} | LR: {current_lr:.6f}")
+                for batch_input, batch_target in dataloader:
+                    batch_input = batch_input.to(device)
+                    batch_target = batch_target.to(device)
+                    output = executor.forward(batch_input)
 
-            # Early stopping
-            if avg_loss < best_loss-min_delta:
-                best_loss = avg_loss
-                wait = 0
-            else:
-                wait += 1
-                if wait == patience:
+                    if not torch.isfinite(output[0]).all():
+                        optimizer.zero_grad()
+                        nan_detected = True
+                        break
+                        
+                    if output[0].shape != batch_target.shape:
+                        print("\n=== SHAPE MISMATCH DETECTED ===")
+                        print(f"  output shape:  {output[0].shape}")
+                        print(f"  target shape:  {batch_target.shape}")
+                        print(f"  adapter flag:  {executor.adapter}")
+                        print(f"  output_index:  {executor.output_index}")
+                        print(f"  f_proj:        {executor.output_f_linproj}")
+                        print(f"  p_proj:        {executor.output_p_linproj}")
+                        print(f"  input shape:   {batch_input.shape}")
+                        
+                        # Check what raw outputs look like
+                        with torch.no_grad():
+                            raw = executor.forward(batch_input, adapting=True)
+                            print(f"  raw output count: {len(raw)}")
+                            for idx, r in enumerate(raw):
+                                marker = " ← selected" if idx == executor.output_index else ""
+                                print(f"    raw[{idx}] shape: {r.shape}{marker}")
+                        
+                        print(f"  architecture:")
+                        executor.architecture.describe()
+                        print("=== END DIAGNOSTIC ===\n")
+                        
+                        # Skip this batch to avoid crash
+                        continue
+                    loss = torch.nn.functional.mse_loss(output[0], batch_target)
+
+                    if not torch.isfinite(loss):
+                        # print(f"Loss {loss} is not finite, skipping batch")
+                        optimizer.zero_grad()
+                        nan_detected = True
+                        break
+
+                    
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(executor.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    epoch_loss += loss.item()
+                    n_valid_batches += 1
+
+                # NaN in this epoch → break out of epoch loop, go to next attempt
+                if nan_detected:
                     break
+        
+                # All batches skipped (shape mismatch) → abort, no retry will help
+                if n_valid_batches == 0:
+                    if verbose:
+                        print(f"  All batches skipped (shape mismatch) — aborting.")
+                    return
+                
+                avg_loss = epoch_loss / n_valid_batches  
+                scheduler.step(avg_loss)
+                if verbose and epoch % 5 == 0:
+                        current_lr = optimizer.param_groups[0]['lr']
+                        print(f"Epoch {epoch}/{max_iter} | Loss: {avg_loss:.6f} | LR: {current_lr:.6f}")
+
+                # Early stopping
+                if avg_loss < best_loss-min_delta:
+                    best_loss = avg_loss
+                    wait = 0
+                else:
+                    wait += 1
+                    if wait == patience:
+                        trained = True
+                        break
+
+            if not nan_detected:
+                return
+        if verbose or True:
+            print(f"  All {max_retries} attempts produced NaN — giving up.")
 
             
-
-
-    

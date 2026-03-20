@@ -16,31 +16,31 @@ class Generator:
 
     def generate(self, n_nodes=16)->Architecture:
         generated = False
+        iters = 0
         if self.generation_type == "dense":
-            while not generated:
+            while not generated and iters < 20:
                 try:
                     arch = self.generate_dense(n_nodes)
-                    test_input = torch.randn(2, 4, 4)
+                    test_input = torch.randn(2, 15, 18) # Sanity check
                     ex = Executor(arch)
                     out = ex.forward(test_input)
                     if torch.isfinite(out[0]).all():
                         return arch
-                    generated = True
                 except Exception as e:
                     pass
-        
+                iters += 1
         elif self.generation_type == "agnostic":
             while not generated:
                 try:
                     arch = self.generate_order_agnostic(n_nodes)
-                    test_input = torch.randn(2, 4, 4)
+                    test_input = torch.randn(2, 15, 18)
                     ex = Executor(arch)
                     out = ex.forward(test_input)
                     if torch.isfinite(out[0]).all():
                         return arch
-                    generated = True
                 except Exception as e:
                     pass
+                iters += 1
         else:
             raise Exception(f"Unknown generation type {self.generation_type}")
 

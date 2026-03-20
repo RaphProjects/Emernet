@@ -676,6 +676,8 @@ class Arena:
                 arch_copy.reset_state()
                 executor = Executor(arch_copy).to(device)
 
+                executor.randomize_weights()
+
                 start_fit = time.time()
                 executor.fit(
                     train_input, train_target,
@@ -693,9 +695,12 @@ class Arena:
 
                 if not math.isfinite(loss_val) or loss_val > 1e6:
                     loss_val = float('nan')
+                    test_score = 0.0
 
+                else :
+                    test_score = 1.0 / (loss_val + 1e-8)
                 results[name] = {
-                    'test_loss': loss_val,
+                    'test_score': test_score,
                     'fit_delay': fit_delay,
                     'test_delay': test_delay
                 }
@@ -714,141 +719,7 @@ class Arena:
 
         return results
 
-    def realDataSet_test(self, architecture, verbose=True, max_iter=100):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if device.type=='cuda':
-            max_batch_size = 2048
-        else:
-            max_batch_size = 32
-        
-        results = {}
 
-        def batched_forward(executor, data, batch_size=2048):
-            outputs = []
-            with torch.no_grad():
-                for i in range(0, len(data), batch_size):
-                    batch = data[i:i+batch_size].to(device)
-                    out = executor.forward(batch)
-                    outputs.append(out[0].cpu())
-            return [torch.cat(outputs, dim=0).to(device)]
-
-        ################# 1 - California housing dataset #################
-
-        # Load California housing dataset
-        data = fetch_california_housing()
-        X, y = data.data, data.target
-
-        scaler_X = StandardScaler()
-        scaler_y = StandardScaler()
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        X_train = scaler_X.fit_transform(X_train)
-        X_test = scaler_X.transform(X_test)
-        y_train = scaler_y.fit_transform(y_train.reshape(-1, 1)).flatten()
-        y_test = scaler_y.transform(y_test.reshape(-1, 1)).flatten()
-        # convert to 3D tensors
-        train_input = torch.tensor(X_train, dtype=torch.float32).unsqueeze(1).to(device)
-        train_target = torch.tensor(y_train, dtype=torch.float32).reshape(-1,1,1).to(device)
-
-        test_input = torch.tensor(X_test, dtype=torch.float32).unsqueeze(1).to(device)
-        test_target = torch.tensor(y_test, dtype=torch.float32).reshape(-1,1,1).to(device)
-
-        arch_copy = copy.deepcopy(architecture)
-        arch_copy.reset_state()
-        executor = Executor(arch_copy).to(device)
-
-        # measure time taken for fitting
-        start_fit_time = time.time()
-        executor.fit(train_input, train_target, verbose=verbose, lr=0.001, max_iter=max_iter, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
-        end_fit_time = time.time()
-        fit_delay = end_fit_time - start_fit_time
-
-        # measure time taken for testing
-        start_test_time = time.time()
-        test_output = batched_forward(executor, test_input)
-        end_test_time = time.time()
-        test_delay = end_test_time - start_test_time
-        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target)
-
-        results['california_housing'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
-        del executor, train_input, train_target, test_input, test_target
-        torch.cuda.empty_cache()
-
-        ################# 2 - MNIST #################
-
-        # Load MNIST dataset
-
-        train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transforms.ToTensor())
-        test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transforms.ToTensor())
-        
-        # minmax scaling
-        train_input_data = train_dataset.data.float().to(device) / 255.0
-        test_input_data = test_dataset.data.float().to(device) / 255.0
-        train_target_data = train_dataset.targets
-        test_target_data = test_dataset.targets
-
-        # convert to 3D tensors
-        train_target_onehot = torch.nn.functional.one_hot(train_target_data, 10).float().unsqueeze(1).to(device)
-        test_target_onehot = torch.nn.functional.one_hot(test_target_data, 10).float().unsqueeze(1).to(device)
-
-        arch_copy = copy.deepcopy(architecture)
-        arch_copy.reset_state()
-        executor = Executor(arch_copy).to(device)
-        # measure time taken for fitting
-        start_fit_time = time.time()
-        executor.fit(train_input_data, train_target_onehot, verbose=verbose, lr=0.001, max_iter=max_iter, batch_size=min(len(train_input_data),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
-        end_fit_time = time.time()
-        fit_delay = end_fit_time - start_fit_time
-
-        # measure time taken for testing
-        start_test_time = time.time()
-        test_output =batched_forward(executor, test_input_data)
-        end_test_time = time.time()
-        test_delay = end_test_time - start_test_time
-        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target_onehot).to(device)
-
-        results['mnist'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
-        del executor, train_input_data, train_target_onehot, test_input_data, test_target_onehot
-        torch.cuda.empty_cache()
-
-        ################# 3 - CIFAR10 #################
-
-        # Load CIFAR10 dataset
-        train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transforms.ToTensor())
-        test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transforms.ToTensor())
-        
-        train_input = torch.stack([img for img, _ in train_dataset])   # [50000, 3, 32, 32]
-        train_input = train_input.permute(0, 2, 1, 3).contiguous().view(50000, 32, 96)
-
-        train_target = torch.tensor([label for _, label in train_dataset])
-        train_target_onehot = torch.nn.functional.one_hot(train_target, 10).float().unsqueeze(1).to(device)
-
-        test_input = torch.stack([img for img, _ in test_dataset])     # [10000, 3, 32, 32]
-        test_input = test_input.permute(0, 2, 1, 3).contiguous().view(10000, 32, 96)
-        test_target = torch.tensor([label for _, label in test_dataset])
-        test_target_onehot = torch.nn.functional.one_hot(test_target, 10).float().unsqueeze(1).to(device)
-
-        arch_copy = copy.deepcopy(architecture)
-        arch_copy.reset_state()
-        executor = Executor(arch_copy).to(device)
-        # measure time taken for fitting
-        start_fit_time = time.time()
-        executor.fit(train_input, train_target_onehot, verbose=verbose, lr=0.001, max_iter=max_iter, batch_size=min(len(train_input),max_batch_size), patience = 10, min_delta = 1e-7, cpu = False)
-        end_fit_time = time.time()
-        fit_delay = end_fit_time - start_fit_time
-
-        # measure time taken for testing
-        start_test_time = time.time()
-        test_output = batched_forward(executor, test_input)
-        end_test_time = time.time()
-        test_delay = end_test_time - start_test_time
-        test_loss = torch.nn.functional.mse_loss(test_output[0], test_target_onehot)
-
-        results['cifar10'] = {'test_loss': test_loss.item(), 'fit_delay': fit_delay, 'test_delay': test_delay}
-        del executor
-        torch.cuda.empty_cache()
-
-        return results
 
     def get_distinction(self,architecture, n_archs=32, verbose = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -870,138 +741,6 @@ class Arena:
         return arch_scores, contestant_scores
 
 
-    def test_real_correlation_old(self,architectures,n_archs_test=16,simp_bal=0.3, real_iter = 150, verbose = True, save_path="correlation_data.csv"):
-        # We evaluate every architecture on both the arena and the real data set
-        # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
-
-        ############################ Arena metrics ############################
-        learnabilities = []
-        simplicities = []
-        occam_scores = []
-        generator = Generator(generation_type=self.generation_type)
-        fixed_opponents = [generator.generate(self.architecture_size) for _ in range(n_archs_test - 1)]
-        n_opp = len(fixed_opponents)
-
-        # Precompute opponent-vs-opponent scores
-        # opp_log_scores[i][j] = log(score of opponent i when learning opponent j)
-        # opp_log_scores[j][i] = log(score of opponent j when learning opponent i)
-        opp_log_scores = [[0.0] * n_opp for _ in range(n_opp)]
-        for a in range(n_opp):
-            if verbose:
-                print(f"Opponent {a+1}/{n_opp}")
-            for b in range(a + 1, n_opp):
-                score_a, score_b = self.get_scores(fixed_opponents[a], fixed_opponents[b],randomizeHP=False, pcp=0)
-                opp_log_scores[a][b] = math.log(max(score_a, 1e-10))
-                opp_log_scores[b][a] = math.log(max(score_b, 1e-10))
-        
-        if verbose:
-            print("Opponent cache built.")
-
-        # Z-normalize, used later but defined now to avoid recomputing it
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
-
-        for i, arch in enumerate(architectures):
-            if verbose:
-                print(f"arena-Testing architecture {i+1}/{len(architectures)}")
-            tested_learn_scores = []
-            tested_simp_scores = []
-            for j in range(n_opp):
-                score_tested, score_opp = self.get_scores(arch, fixed_opponents[j], randomizeHP=False, pcp=0)
-                tested_learn_scores.append(math.log(max(score_tested, 1e-10)))
-                tested_simp_scores.append(math.log(max(score_opp, 1e-10)))
-
-            pool_size = n_opp + 1  # should equal n_archs_test
-
-            raw_learn = [0.0] * pool_size
-            raw_simp = [0.0] * pool_size
-
-            for j in range(n_opp):
-                raw_learn[0] += tested_learn_scores[j]       # tested learned opp_j
-                raw_simp[0] += tested_simp_scores[j]         # opp_j learned tested
-                raw_learn[j + 1] += tested_simp_scores[j]    # opp_j learned tested
-                raw_simp[j + 1] += tested_learn_scores[j]    # tested learned opp_j
-
-            # Opponent vs opponent (cached)
-            for a in range(n_opp):
-                for b in range(a + 1, n_opp):
-                    raw_learn[a + 1] += opp_log_scores[a][b]
-                    raw_learn[b + 1] += opp_log_scores[b][a]
-                    raw_simp[a + 1] += opp_log_scores[b][a]
-                    raw_simp[b + 1] += opp_log_scores[a][b]
-
-            # Normalize by number of opponents
-            raw_learn = [s / (pool_size - 1) for s in raw_learn]
-            raw_simp = [s / (pool_size - 1) for s in raw_simp]
-
-            
-
-            norm_learn = z_normalize(raw_learn)
-            norm_simp = z_normalize(raw_simp)
-
-            occam = [(1 - simp_bal) * norm_learn[k] + simp_bal * norm_simp[k] for k in range(pool_size)]
-
-            learnabilities.append(norm_learn[0])
-            simplicities.append(norm_simp[0])
-            occam_scores.append(occam[0])
-                
-
-        arena_metrics = {"learnability": learnabilities, "simplicity": simplicities, "occam_score": occam_scores}
-        ############################ Real data set metrics ############################
-
-
-        real_dataset_metrics = defaultdict(list)# dict of ["dataset-metrics"]->list of values
-        for i, arch in enumerate(architectures):
-            if verbose:
-                print(f"real-Testing architecture {i}")
-            
-            res = self.realDataSet_test(arch, verbose=False, max_iter=real_iter)
-            for dataset in res.keys():
-                for metric in res[dataset].keys():
-                    real_dataset_metrics[f"{dataset}-{metric}"].append(res[dataset][metric])
-
-        
-        ########################### Compute correlations ##############################
-        if verbose:
-            print(f"Computing correlations...")
-        correlations = {} # dict of ["arenametric-dataset-realdatametric"]->correlation
-        for arenametric in arena_metrics:
-            for realdatametric in real_dataset_metrics:
-                correlations[f"{arenametric}-{realdatametric}"] = spearmanr(arena_metrics[arenametric], real_dataset_metrics[realdatametric])[0]
-        if verbose:
-            print(correlations)
-        
-        
-        ########################## Save to CSV ##############################²
-        headers = ["arch_id", "learnability", "simplicity", "occam_score"]
-        headers += sorted(real_dataset_metrics.keys())
-
-        rows = []
-
-        for i in range(len(architectures)):
-            row = {
-                "arch_id": i,
-                "learnability": learnabilities[i],
-                "simplicity": simplicities[i],
-                "occam_score": occam_scores[i],
-            }
-            for key in sorted(real_dataset_metrics.keys()):
-                row[key] = real_dataset_metrics[key][i]
-            rows.append(row)
-        
-        with open(save_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=headers)
-            writer.writeheader()
-            writer.writerows(rows)
-        if verbose:
-            print(f"Saved {len(rows)} rows to {save_path}")
-
-
-        
-        return correlations
     
     def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=0.3, real_iter = 150, verbose = True, save_path="correlation_data.csv"):
         # We evaluate every architecture on both the arena and the real data set
