@@ -152,3 +152,4 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 # TODO - find the % of random archs beating MLP at similar sizes
 # TODO - compute the average learnability and simplicity of the architectures - faster comparisons
 
+# TODO - research metaheuristique + theorie de l'apprentissage statistique + VC dimension

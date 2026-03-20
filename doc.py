@@ -12,7 +12,7 @@ MLP avg score: 70.47845018121056, Winner avg score: 2.3837992025481864
 T(n)=(5/24)n(n-1) 
 n = (24*T(n))/5
 
-
+# TODO - research metaheuristique + theorie de l'apprentissage statistique + VC dimension
 20 - 0.955191577769701
 23 - 1.3011372052075836 - Winrates : [0.9333333333333333, 0.6666666666666666]
 against mlp :
