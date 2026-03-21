@@ -26,3 +26,24 @@ def n_archs_from_minutes(t):
 
 print(n_archs_from_minutes(110))
     
+
+
+
+
+
+
+
+
+
+
+"""
+A QD method like MAP-Elites could keep an archive over behavioral descriptors such as:
+
+parameter count
+graph depth
+graph density
+ratio of Add/MatMul/Activation
+learnability
+simplicity
+stability class
+"""

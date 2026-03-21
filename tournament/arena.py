@@ -14,6 +14,9 @@ from collections import defaultdict
 from scipy.stats import spearmanr
 import csv
 import os
+# import plt
+import matplotlib.pyplot as plt
+
 
 from modules.base import ModuleType
 from modules.operations import *
@@ -875,6 +878,96 @@ class Arena:
 
         
         return correlations
+    
+    def corr_data_processing(self, save_path="correlation_data.csv"):
+        rows = []
+        with open(save_path, "r") as f:
+            reader = csv.DictReader(f)
+            headers = reader.fieldnames
+            for row in reader:
+                parsed = {}
+                for k, v in row.items():
+                    try:
+                        parsed[k] = float(v)
+                    except (ValueError, TypeError):
+                        parsed[k] = float('nan')
+                rows.append(parsed)
+        # rows are dicts
+        # we want to add a column for average z-normalized score on real test set
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
+        
+        # Z-normalize each dataset's test losses separately, then average
+        loss_keys = [k for k in headers if k.endswith("-test_score")]
+        per_dataset_z = {}
+        for lk in loss_keys:
+            vals = [r[lk] for r in rows]
+            per_dataset_z[lk] = z_normalize(vals)
+        
+        for i in range(len(rows)):
+            avg_z = sum(per_dataset_z[lk][i] for lk in loss_keys) / len(loss_keys)
+            rows[i]["avg_z_test_score"] = avg_z
+        
+        # Compute correlations
+        arena_keys = ["learnability", "simplicity", "occam_score"]
+        avg_z_vals = [r["avg_z_test_score"] for r in rows]
+        
+        correlations = {}
+        for ak in arena_keys:
+            a_vals = [r[ak] for r in rows]
+            sp = spearmanr(a_vals, avg_z_vals)[0]
+            correlations[ak] = {"spearman": sp}
+        
+        os.makedirs("plots", exist_ok=True)
+        for ak in arena_keys:
+            a_vals = [r[ak] for r in rows]
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.scatter(a_vals, avg_z_vals, s=60, edgecolors='k', linewidths=0.5)
+            for j, (x, y) in enumerate(zip(a_vals, avg_z_vals)):
+                ax.annotate(str(j), (x, y), textcoords="offset points", xytext=(5, 5), fontsize=8)
+            sp = correlations[ak]["spearman"]
+            ax.set_title(f"{ak} vs Avg Z-Normalized Test Score (Spearman={sp:.3f})")
+            ax.set_xlabel(ak)
+            ax.set_ylabel("Avg Z-Normalized Test Score")
+            ax.grid(True, alpha=0.3)
+            fig.tight_layout()
+            fig.savefig(f"plots/{ak}_vs_avg_z_test.png", dpi=150)
+            plt.close(fig)
+
+        # Append correlations to CSV
+        with open(save_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([])
+            writer.writerow(["# Correlations vs avg_z_test_score"])
+            writer.writerow(["arena_metric", "spearman"])
+            for ak, v in correlations.items():
+                writer.writerow([ak, f"{v['spearman']:.4f}"])
+
+        # Plot simplicity vs avg z-fit delay
+        fit_keys = [k for k in headers if k.endswith("-fit_delay")]
+
+        #  Z-normalize each dataset's fit delays separately
+        per_dataset_z_fit = {}
+        for fk in fit_keys:
+            vals = [r[fk] for r in rows]
+            per_dataset_z_fit[fk] = z_normalize(vals)
+
+        # Average the normalized fit delays and add to rows
+        for i in range(len(rows)):
+            avg_z_f = sum(per_dataset_z_fit[fk][i] for fk in fit_keys) / len(fit_keys)
+            rows[i]["avg_z_fit"] = avg_z_f
+        
+        s_vals, f_vals = [r["simplicity"] for r in rows], [r["avg_z_fit"] for r in rows]
+        sp_fit = spearmanr(s_vals, f_vals)[0]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.scatter(s_vals, f_vals, c='g')
+        for j, (x, y) in enumerate(zip(s_vals, f_vals)): ax.annotate(str(j), (x,y), xytext=(3,3), textcoords="offset points")
+        ax.set_title(f"Simplicity vs Avg Z-Fit Delay (Sp={sp_fit:.3f})")
+        fig.savefig("plots/simplicity_vs_z_fit_delay.png", bbox_inches='tight'); plt.close(fig)
+        
                     
                     
 

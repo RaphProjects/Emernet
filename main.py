@@ -101,21 +101,23 @@ def twolayersMLP():
 #twolayersMLP()
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=256, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+'''
 generator = Generator(generation_type="agnostic")
 architectures = [generator.generate(n_nodes=12) for _ in range(1)]
 architectures.append(Architecture.load("O_winner_2archs.pkl"))
 architectures.append(Architecture.load("O_winner_3archs.pkl"))
 
 architectures.append(Architecture.load("O_winner_4archs.pkl"))
-'''
+
 architectures.append(Architecture.load("O_winner_20archs.pkl"))
 architectures.append(Architecture.load("O_winner_23archs.pkl"))
 
 '''
+'''
 architectures.append(Architecture.load("O_winner_24archs.pkl"))
 print(arena.test_real_correlation(architectures=architectures, n_archs_test=5, simp_bal=0.3, verbose = True, real_iter = 60))
 
-'''
+
 
 mlp = arena.make_mlp([32,16])
 winner = Architecture.load("winner_24_opponnents_12_nodes_91wr.pkl")
@@ -147,9 +149,13 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 
 # NOTE - O_winner_2archs might be OP for no reason
 
-# TODO - make simplicity and learnability in normalized log space to prevent outlier dominance
-# TODO - Find a way to make architectures less dense
+# TODO - Add structural models
 # TODO - find the % of random archs beating MLP at similar sizes
 # TODO - compute the average learnability and simplicity of the architectures - faster comparisons
+# TODO - plot the points of the CSV with the linear regression
+# TODO - uniform the input tensors
+# TODO - GNN encoding of archs (graph variational autoencoder)
 
 # TODO - research metaheuristique + theorie de l'apprentissage statistique + VC dimension
+
+arena.corr_data_processing()
