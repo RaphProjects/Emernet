@@ -417,6 +417,104 @@ class Arena:
             print(f"Winner: arch {best_arch_index} with {arch_scores[best_arch_index]} wins")
         
         return architectures[best_arch_index], arch_scores, best_arch_index
+    
+    def pareto_selection(self, n_rounds=8, n_archs=10, verbose=False, randomizeHP=True, simp_bal=0.3):
+        generator = Generator(generation_type=self.generation_type)
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
+        
+        pareto_archs = []
+        fight_cache = {}
+        for round in range(n_rounds):
+            architectures = list(pareto_archs)
+            while len(architectures) < n_archs:
+                architectures.append(generator.generate(self.architecture_size))
+            pareto_archs = []
+            learnability_scores = [0 for _ in range(n_archs)]
+            simplicity_scores = [0 for _ in range(n_archs)]
+            
+            n_fights = 0
+            total_pairs =  n_archs * (n_archs - 1) // 2
+            round_score_cache = {}
+            for i in range(n_archs):
+                for j in range(i + 1, n_archs):
+
+                    if verbose:
+                        print(f"Fight {n_fights + 1}/{total_pairs}: arch {i} vs {j}")
+
+                    if (i,j) in fight_cache:
+                        score_i, score_j = fight_cache[(i,j)]
+                    elif (j, i) in fight_cache: 
+                        score_j, score_i = fight_cache[(j, i)]
+                    else:
+                        score_i, score_j = self.get_scores(
+                        architectures[i], architectures[j], randomizeHP=randomizeHP, pcp=0
+                        )
+                    round_score_cache[(i,j)] = (score_i, score_j)
+                    learnability_scores[i] += math.log((max(score_i,1e-10)))
+                    learnability_scores[j] += math.log((max(score_j,1e-10)))
+                    simplicity_scores[i] += math.log((max(score_j,1e-10)))
+                    simplicity_scores[j] += math.log((max(score_i,1e-10)))
+                    if verbose:
+                        print(f"score_{i} : {score_i}, score_{j} : {score_j}")
+                    
+                    n_fights += 1
+            
+            
+            # identifying the pareto front
+            pareto_archs_idx = []
+            for i in range(n_archs):
+                is_dominated = False
+                for j in range(n_archs):
+                    if learnability_scores[i] < learnability_scores[j] and simplicity_scores[i] < simplicity_scores[j]:
+                        is_dominated = True
+                        break
+                if not is_dominated:
+                    pareto_archs.append(architectures[i])
+                    pareto_archs_idx.append(i)
+                    
+            # if no arch is dominated, we pop the arch with the worst score
+            if len(pareto_archs) == n_archs:
+                norm_learn = z_normalize(learnability_scores)
+                norm_simp = z_normalize(simplicity_scores)
+                occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal))) for i in range(n_archs)]
+                min_score_idx = occam_scores.index(min(occam_scores))
+                # get the index of the min score in the pareto list using pareto_archs_idx
+                min_score_idx = pareto_archs_idx.index(min_score_idx)
+                pareto_archs.pop(min_score_idx)
+                pareto_archs_idx.pop(min_score_idx)
+                
+
+            
+            #build the cache
+            fight_cache = {}
+            for i in range(len(pareto_archs)):
+                for j in range(i + 1, len(pareto_archs)):
+                    fight_cache[(i,j)] = round_score_cache[(pareto_archs_idx[i], pareto_archs_idx[j])]
+
+            
+        
+        
+        learnability_scores = [score/(n_archs-1) for score in learnability_scores]
+        simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
+        norm_learn = z_normalize(learnability_scores)
+        norm_simp = z_normalize(simplicity_scores)
+        occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal)))
+                         for i in range(n_archs)]
+        max_score_idx = occam_scores.index(max(occam_scores))
+
+        if verbose:
+            print(f"average learnability score: {sum(norm_learn)/len(norm_learn)}")
+            print(f"average simplicity score: {sum(norm_simp)/len(norm_simp)}")
+
+
+        return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, simplicity_scores
+        
+        
+
             
     
 

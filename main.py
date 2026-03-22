@@ -102,10 +102,9 @@ def twolayersMLP():
 #twolayersMLP()
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=256, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-for i in range(4):
-    best_arch, arch_scores, best_arch_index = arena.smooth_selection(n_archs=4, max_fights=256, verbose=True, randomizeHP=True)
-    print(f"Winner score: {arch_scores[best_arch_index]}, scores = {arch_scores}")
-    best_arch.describe()
+
+winner, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=4, n_rounds=3, verbose=True, randomizeHP=True)
+print(f"Winner score: {occam_scores[max_score_idx]}, scores = {occam_scores}")
 
 '''
 generator = Generator(generation_type="agnostic")
@@ -161,6 +160,3 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 # TODO - plot the points of the CSV with the linear regression
 # TODO - uniform the input tensors
 # TODO - GNN encoding of archs (graph variational autoencoder)
-
-# TODO - research metaheuristique + theorie de l'apprentissage statistique + VC dimension
-
