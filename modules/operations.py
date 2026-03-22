@@ -1,21 +1,7 @@
 from .base import Module, ModuleType, MappingType
 import torch
 
-# (B, P, F) 3D tensor
-# Tu as B matrices
-#Chaque matrice a P lignes
-#Et F colonnes
 
-'''
-def AutoLinProjection(inputVecs): # We adapt to the longest vector to avoid loss of information
-    tensor_max_f = max(inputVecs, key=lambda t: t.shape[-1])
-    projected_vecs = []
-    for t in inputVecs:
-        linproj = torch.nn.Linear(t.shape[-1], tensor_max_f.shape[-1], bias=True)
-        projected_vecs.append(linproj(t))
-
-    return projected_vecs
-'''
 
 class Add(Module):
     _mapping_type = MappingType.REDUCER

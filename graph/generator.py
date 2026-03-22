@@ -8,6 +8,7 @@ from modules.operations import *
 from modules.base import *
 from modules.learnable import *
 from modules.activations import *
+from modules.normalizer import *
 
 class Generator:
     def __init__(self, generation_type = "agnostic"):
@@ -50,10 +51,12 @@ class Generator:
         self.architecture.add_node(0, Input())
         stopflag = False
         rooting_p = 1
-        AvailableModules = [MatMul, Add, Activation, LearnableParameter]
+        AvailableModules = [MatMul, Add, Activation, LearnableParameter, Normalizer]
         while not stopflag:            
             # Add a new node
             module_type = random.choice(AvailableModules)
+            if module_type == Normalizer:
+                print(f"Normalizer added")
             module_parameters = module_type.random_parameters()
             lastnode_id = self.architecture.append_node(module_type(*module_parameters))
         
@@ -99,7 +102,7 @@ class Generator:
         self.architecture.add_node(0, Input())
         
         rooting_p = random.choice([0.25, 0.3, 0.35, 0.40, 0.45, 0.5, 0.55, 0.6])
-        AvailableModules = [MatMul, Add, Activation, LearnableParameter]
+        AvailableModules = [MatMul, Add, Activation, LearnableParameter, Normalizer]
         for i in range(n_nodes):
             # Add a new node
             module_type = random.choice(AvailableModules)

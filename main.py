@@ -97,10 +97,16 @@ def twolayersMLP():
     executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=1000, batch_size=16, patience = 10, min_delta = 1e-7)
 
 
+
     
 #twolayersMLP()
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=256, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+for i in range(4):
+    best_arch, arch_scores, best_arch_index = arena.smooth_selection(n_archs=4, max_fights=256, verbose=True, randomizeHP=True)
+    print(f"Winner score: {arch_scores[best_arch_index]}, scores = {arch_scores}")
+    best_arch.describe()
+
 '''
 generator = Generator(generation_type="agnostic")
 architectures = [generator.generate(n_nodes=12) for _ in range(1)]
@@ -158,4 +164,3 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 
 # TODO - research metaheuristique + theorie de l'apprentissage statistique + VC dimension
 
-arena.corr_data_processing()

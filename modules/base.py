@@ -11,7 +11,9 @@ class ModuleType(Enum):
     CONCATENATION = auto()
     STRUCTURAL = auto()
     LEARNABLE = auto()
+    NORM = auto()
     INPUT = auto()
+
 
 class MappingType(Enum):
     REDUCER = auto()
