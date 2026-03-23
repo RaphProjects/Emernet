@@ -101,10 +101,12 @@ def twolayersMLP():
     
 #twolayersMLP()
 
-arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=256, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
 
-winner, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=4, n_rounds=3, verbose=True, randomizeHP=True)
+winner, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=18, n_rounds=5, verbose=True, randomizeHP=True)
 print(f"Winner score: {occam_scores[max_score_idx]}, scores = {occam_scores}")
+winner.describe()
+winner.save("pareto_winner_16archs_3rounds.pkl")
 
 '''
 generator = Generator(generation_type="agnostic")
@@ -154,9 +156,8 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 
 # NOTE - O_winner_2archs might be OP for no reason
 
-# TODO - Add structural models
+# TODO - Add structural modules
 # TODO - find the % of random archs beating MLP at similar sizes
-# TODO - compute the average learnability and simplicity of the architectures - faster comparisons
-# TODO - plot the points of the CSV with the linear regression
 # TODO - uniform the input tensors
 # TODO - GNN encoding of archs (graph variational autoencoder)
+# TODO - tune simp_bal by equaling the occam_score over MLPs of different sizes
