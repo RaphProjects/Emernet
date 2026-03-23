@@ -209,14 +209,22 @@ class Arena:
         test_input = input[train_size:]
 
         # generate the outputs for each executor
-        output_1 = executors[0].forward(input)
-        output_2 = executors[1].forward(input)
+        output_1 = (executors[0].forward(input))[0]
+        output_2 = (executors[1].forward(input))[0]
 
-        train_target_1 = output_2[0][:train_size].to(device)
-        train_target_2 = output_1[0][:train_size].to(device)
+        # Standardize the targets so amplitude/flatness gives no advantage
+        std_1, mean_1 = torch.std_mean(output_1, dim=0, keepdim=True)
+        std_2, mean_2 = torch.std_mean(output_2, dim=0, keepdim=True)
 
-        test_target_1 = output_2[0][train_size:].to(device)
-        test_target_2 = output_1[0][train_size:].to(device)
+        # Add epsilon to prevent division by zero for totally dead networks
+        output_1 = (output_1 - mean_1) / (std_1 + 1e-5)
+        output_2 = (output_2 - mean_2) / (std_2 + 1e-5)
+
+        train_target_1 = output_2[:train_size].to(device)
+        train_target_2 = output_1[:train_size].to(device)
+
+        test_target_1 = output_2[train_size:].to(device)
+        test_target_2 = output_1[train_size:].to(device)
 
         # make new executors and fit them
         learner_1 = Executor(copy.deepcopy(arch_1)).to(device)
@@ -383,7 +391,7 @@ class Arena:
         return wrs, occam_scores, norm_learn, norm_simp
 
 
-    def smooth_selection(self, n_archs=16, max_fights=256, verbose=False, randomizeHP=True):
+    def OLDsmooth_selection(self, n_archs=16, max_fights=256, verbose=False, randomizeHP=True):
         generator = Generator(generation_type=self.generation_type)
         architectures = [generator.generate(self.architecture_size) for _ in range(n_archs)]
         arch_scores = [0 for _ in range(n_archs)]
@@ -515,8 +523,81 @@ class Arena:
         
         
 
+    def tune_simp_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
+        generator = Generator(generation_type=self.generation_type)
+
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
+        
+        simp_bal_values = []
+        for round in range(n_rounds):
+            if use_MLPs:
+                dims = [[8], [16], [8,16], [16,32], [16,16,32],[16,32,64]]
+                architectures = [self.make_mlp(hidden_sizes=size) for size in dims]
+                while len(architectures) < n_archs:
+                    architectures.append(generator.generate(self.architecture_size))
+            n_pairs = n_archs * (n_archs - 1) // 2
+            learnability_scores = [0 for _ in range(n_archs)]
+            simplicity_scores = [0 for _ in range(n_archs)]
+            n_fight = 0
+            for i in range(n_archs):
+                for j in range(i + 1, n_archs):
+                    if verbose:
+                        print(f"fight n°{n_fight+1}/{n_pairs}: arch {i} vs {j}")
+                    n_fight +=1
+                    score_i, score_j = self.get_scores(
+                        architectures[i], architectures[j], randomizeHP=randomizeHP
+                    )
+                    learnability_scores[i] += math.log((max(score_i,1e-10)))
+                    learnability_scores[j] += math.log((max(score_j,1e-10)))
+                    simplicity_scores[i] += math.log((max(score_j,1e-10)))
+                    simplicity_scores[j] += math.log((max(score_i,1e-10)))
+                    if verbose:
+                        print(f"score_{i} : {score_i}, score_{j} : {score_j}")
+            learnability_scores = [score/(n_archs-1) for score in learnability_scores]
+            simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
+            norm_learn = z_normalize(learnability_scores)
+            norm_simp = z_normalize(simplicity_scores)
+
+            # Now we find the simp_bal value that minmizes the distances between the occam_scores of the mlp
+            norm_learn_mlp = norm_learn[:len(dims)]
+            norm_simp_mlp = norm_simp[:len(dims)]
+
+            print(f"norm_learn_mlp: {norm_learn_mlp}")
+            print(f"norm_simp_mlp: {norm_simp_mlp}")
+
+            mu_L = sum(norm_learn_mlp) / len(norm_learn_mlp)
+            mu_S = sum(norm_simp_mlp) / len(norm_simp_mlp)
             
-    
+            num = 0.0
+            den = 0.0
+            for L, S in zip(norm_learn_mlp, norm_simp_mlp):
+                delta_L = L - mu_L
+                delta_D = (S - mu_S) - (L - mu_L)
+                
+                num += delta_L * delta_D
+                den += delta_D * delta_D
+                
+            if den == 0:
+                best_simp_bal = 0.5 # Fallback if all scores are identical
+            else:
+                best_simp_bal = - (num / den)
+                
+            # Clip between 0 and 1 to keep it a valid percentage
+            best_simp_bal = max(0.0, min(1.0, best_simp_bal))
+            
+            if verbose:
+                print(f"Round {round} optimal simp_bal: {best_simp_bal:.4f}")
+            simp_bal_values.append(best_simp_bal)
+
+        avg_simp_bal = sum(simp_bal_values) / len(simp_bal_values)
+        std_simp_bal = math.sqrt(sum((v - avg_simp_bal) ** 2 for v in simp_bal_values) / len(simp_bal_values))
+        return simp_bal_values , avg_simp_bal, std_simp_bal
+
+
 
     def start(self, randomizeHP = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
