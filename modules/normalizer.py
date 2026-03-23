@@ -46,11 +46,13 @@ class Normalizer(Module):
                 tensor = norm_layer(tensor)
             elif self.dimension == 1:
                 tensor = tensor.transpose(1,2)
-                tensor = norm_layer(tensor)
+                if tensor.shape[0] > 1:
+                    tensor = norm_layer(tensor)
                 tensor = tensor.transpose(1,2)
             elif self.dimension == 2:
                 tensor = tensor.transpose(1,2)
-                tensor = norm_layer(tensor)
+                if tensor.shape[-1] > 1:
+                    tensor = norm_layer(tensor)
                 tensor = tensor.transpose(1,2)
             outputs.append(tensor)
         return outputs
