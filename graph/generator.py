@@ -10,12 +10,12 @@ from modules.learnable import *
 from modules.activations import *
 from modules.normalizer import *
 from modules.structural import *
-
+from modules.pooling import *
 class Generator:
     def __init__(self, generation_type = "agnostic"):
         # self.architecture = Architecture()
         self.generation_type = generation_type
-        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat, Split]
+        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat, Split, Pooling]
 
     def generate(self, n_nodes=16)->Architecture:
         generated = False

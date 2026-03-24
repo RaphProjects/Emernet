@@ -162,8 +162,7 @@ for i in range(3):
     best_arch.describe()
 # NOTE - O_winner_2archs might be OP for no reason
 
-# TODO - Add structural modules
-# TODO - find the % of random archs beating MLP at similar sizes
+
+# TODO - find the % of random archs beating MLP
 # TODO - uniform the input tensors
 # TODO - GNN encoding of archs (graph variational autoencoder)
-# TODO - tune simp_bal by equaling the occam_score over MLPs of different sizes
