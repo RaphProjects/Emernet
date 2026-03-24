@@ -15,7 +15,7 @@ class Generator:
     def __init__(self, generation_type = "agnostic"):
         # self.architecture = Architecture()
         self.generation_type = generation_type
-        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat]
+        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat, Split]
 
     def generate(self, n_nodes=16)->Architecture:
         generated = False

@@ -1,6 +1,7 @@
 from .base import Module, ModuleType, MappingType
 import torch
 import random
+
 class Concat(Module):
     _mapping_type = MappingType.REDUCER
     def __init__(self, dimension = 2, name = None):
@@ -54,3 +55,45 @@ class Concat(Module):
                 projected_tensors.append(adapted_t)
 
         return [torch.cat(projected_tensors, dim=self.dimension)]
+    
+    class Split(Module):
+        _mapping_type = MappingType.MAPPER
+        def __init__(self, dimension = 2, fraction = 0.5, name = None):
+            super().__init__(name, ModuleType.STRUCTURAL)
+            self.n_parameters = 0
+            self.dimension = dimension
+            self.fraction = fraction
+
+        @property
+        def mapping_type(self) -> MappingType:
+            return MappingType.MAPPER
+        
+        @staticmethod
+        def random_parameters():
+            return [random.choice([1, 2]), random.uniform(0.0, 1.0)]
+        
+        def reset_state(self):
+            self.n_parameters = 0
+
+        def forward(self, inputTensors):
+            output_tensors = []
+            
+
+            for i,t in enumerate(inputTensors): 
+                dim_size = t.shape[self.dimension]
+                if dim_size <= 1:
+                    # Fallback: if we can't split, we just duplicate it into two branches
+                    output_tensors.append(t)
+                    output_tensors.append(t)
+                else:
+                    split_idx = int(dim_size * self.split_ratio)
+                    split_idx = max(1, min(dim_size - 1, split_idx)) # safety first
+
+                    part1, part2 = torch.split(t, [split_idx, dim_size - split_idx], dim=self.dimension)
+
+                    output_tensors.append(part1)
+                    output_tensors.append(part2)
+
+
+
+            return [output_tensors]
