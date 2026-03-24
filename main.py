@@ -157,9 +157,9 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 
 
 '''
-for i in range(3):
-    best_arch, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=9, n_rounds=1, verbose=True, randomizeHP=True)
-    best_arch.describe()
+
+best_arch, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=18, n_rounds=5, verbose=True, randomizeHP=True)
+best_arch.save("pareto_best.pkl")
 # NOTE - O_winner_2archs might be OP for no reason
 
 

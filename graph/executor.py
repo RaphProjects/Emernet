@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 from .architecture import Architecture
 from modules.activations import *
-from modules.aggregation import *
+from modules.pooling import *
 from modules.base import ModuleType
 from modules.input import *
 from modules.learnable import *
