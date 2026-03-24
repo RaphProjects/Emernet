@@ -9,11 +9,13 @@ from modules.base import *
 from modules.learnable import *
 from modules.activations import *
 from modules.normalizer import *
+from modules.structural import *
 
 class Generator:
     def __init__(self, generation_type = "agnostic"):
         # self.architecture = Architecture()
         self.generation_type = generation_type
+        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat]
 
     def generate(self, n_nodes=16)->Architecture:
         generated = False
@@ -51,7 +53,7 @@ class Generator:
         self.architecture.add_node(0, Input())
         stopflag = False
         rooting_p = 1
-        AvailableModules = [MatMul, Add, Activation, LearnableParameter, Normalizer]
+        AvailableModules = self.available_modules
         while not stopflag:            
             # Add a new node
             module_type = random.choice(AvailableModules)
@@ -102,7 +104,7 @@ class Generator:
         self.architecture.add_node(0, Input())
         
         rooting_p = random.choice([0.25, 0.3, 0.35, 0.40, 0.45, 0.5, 0.55, 0.6])
-        AvailableModules = [MatMul, Add, Activation, LearnableParameter, Normalizer]
+        AvailableModules = self.available_modules
         for i in range(n_nodes):
             # Add a new node
             module_type = random.choice(AvailableModules)

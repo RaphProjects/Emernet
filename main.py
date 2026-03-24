@@ -103,11 +103,10 @@ def twolayersMLP():
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
 
-simp_bals = [0.7452,1.0000,1.0000,1.0000]
-
+'''
 simp_bals, avg_simp_bal, std_simp_bal = arena.tune_simp_bal(n_archs=12, n_rounds=4, verbose=True, randomizeHP=True, use_MLPs=True)
 print(f"simp_bals: {simp_bals}, avg: {avg_simp_bal}, std: {std_simp_bal}")
-'''
+
 winner, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=18, n_rounds=5, verbose=True, randomizeHP=True)
 print(f"Winner score: {occam_scores[max_score_idx]}, scores = {occam_scores}")
 winner.describe()
@@ -158,7 +157,9 @@ print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {l
 
 
 '''
-
+for i in range(3):
+    best_arch, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=9, n_rounds=1, verbose=True, randomizeHP=True)
+    best_arch.describe()
 # NOTE - O_winner_2archs might be OP for no reason
 
 # TODO - Add structural modules

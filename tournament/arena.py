@@ -27,7 +27,8 @@ from graph.executor import *
 from graph.generator import *
 
 class Arena:
-    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64, train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=0.38, cpu=False):
+    def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64,
+                  train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=0.38, cpu=False, simp_bal=0.36):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
@@ -40,6 +41,7 @@ class Arena:
         self.report = report
         self.pcp = pcp # parameter complexity penalty exponent
         self.cpu = cpu
+        self.simp_bal = simp_bal
 
     def calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
                     initial_step=0.1, step_decay=0.98, verbose=True, 
@@ -283,7 +285,9 @@ class Arena:
                 return score_1, score_2, deltaK_1, deltaK_2
             return score_1, score_2
 
-    def occam_selection(self, n_archs=16, verbose=False, randomizeHP=True, simp_bal=0.3):
+    def occam_selection(self, n_archs=16, verbose=False, randomizeHP=True, simp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
         generator = Generator(generation_type=self.generation_type)
         architectures = [generator.generate(self.architecture_size) for _ in range(n_archs)]
         simplicity_scores = [0 for _ in range(n_archs)]
@@ -331,7 +335,9 @@ class Arena:
 
         return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, simplicity_scores
         
-    def occam_test(self, ori_architectures, n_archs=8, verbose=False, randomizeHP=True, simp_bal=0.3):
+    def occam_test(self, ori_architectures, n_archs=8, verbose=False, randomizeHP=True, simp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
 
         if not isinstance(ori_architectures, list):
             ori_architectures = [ori_architectures]
@@ -426,7 +432,9 @@ class Arena:
         
         return architectures[best_arch_index], arch_scores, best_arch_index
     
-    def pareto_selection(self, n_rounds=8, n_archs=10, verbose=False, randomizeHP=True, simp_bal=0.3):
+    def pareto_selection(self, n_rounds=8, n_archs=10, verbose=False, randomizeHP=True, simp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
         generator = Generator(generation_type=self.generation_type)
         def z_normalize(values):
             mu = sum(values) / len(values)
@@ -924,10 +932,11 @@ class Arena:
 
 
     
-    def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=0.3, real_iter = 150, verbose = True, save_path="correlation_data.csv"):
+    def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=None, real_iter = 150, verbose = True, save_path="correlation_data.csv"):
         # We evaluate every architecture on both the arena and the real data set
         # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
-
+        if simp_bal is None:
+            simp_bal = self.simp_bal
         ############################ Arena metrics ############################
         learnabilities = []
         simplicities = []

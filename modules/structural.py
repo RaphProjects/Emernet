@@ -1,0 +1,56 @@
+from .base import Module, ModuleType, MappingType
+import torch
+import random
+class Concat(Module):
+    _mapping_type = MappingType.REDUCER
+    def __init__(self, dimension = 2, name = None):
+        super().__init__(name, ModuleType.STRUCTURAL)
+        self.projections = None
+        self.n_parameters = 0
+        self.dimension = dimension
+
+    @property
+    def mapping_type(self) -> MappingType:
+        return MappingType.REDUCER
+    
+    @staticmethod
+    def random_parameters():
+        return [random.choice([1, 2])]
+    
+    def reset_state(self):
+        self.projections = None
+        self.n_parameters = 0
+
+    def forward(self, inputTensors):
+        
+        # Mismatch handling using projections
+        if self.projections is None:
+            '''
+            for i, t in enumerate(inputTensors):
+                print(f"Add input {i}: shape {t.shape}")
+            '''
+            dim_to_match = 2 if self.dimension == 1 else 1
+            
+            self.projections = torch.nn.ModuleList()
+            # We adapt to the longest vector to avoid loss of information
+            max_size = max(inputTensors, key=lambda t: t.shape[dim_to_match]).shape[dim_to_match]
+            for t in inputTensors:
+                if t.shape[dim_to_match] != max_size:
+                    self.projections.append(torch.nn.Linear(t.shape[dim_to_match], max_size, bias=True))
+                else:
+                    self.projections.append(torch.nn.Identity())
+
+            self.projections.to(inputTensors[0].device)
+            self.n_parameters = sum(p.numel() for p in self.projections.parameters())
+
+        projected_tensors = []
+        if self.dimension == 1:
+            for i,t in enumerate(inputTensors): # we adapt the dim 2, no need to transpose
+                projected_tensors.append(self.projections[i](t))
+        else:
+            for i,t in enumerate(inputTensors):
+                t = t.transpose(1,2)
+                adapted_t = self.projections[i](t).transpose(1,2)
+                projected_tensors.append(adapted_t)
+
+        return [torch.cat(projected_tensors, dim=self.dimension)]
