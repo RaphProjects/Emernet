@@ -102,6 +102,20 @@ def twolayersMLP():
 #twolayersMLP()
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+mlp = arena.make_mlp([32,16])
+pareto_best = Architecture.load("pareto_best.pkl")
+
+mlp_wrs = []
+pareto_winner_wrs = []
+for i in range(10):
+    wrs, occam_scores, learnabilities, simplicities = arena.occam_test([mlp,pareto_best], n_archs=18, verbose=True, randomizeHP=True)
+    mlp_wrs.append(wrs[0])
+    pareto_winner_wrs.append(wrs[1])
+
+avg_mlp_wr = sum(mlp_wrs)/len(mlp_wrs)
+avg_pareto_winner_wr = sum(pareto_winner_wrs)/len(pareto_winner_wrs)
+
+
 
 '''
 simp_bals, avg_simp_bal, std_simp_bal = arena.tune_simp_bal(n_archs=12, n_rounds=4, verbose=True, randomizeHP=True, use_MLPs=True)
@@ -156,13 +170,13 @@ wrs, occam_scores, learnabilities, simplicities = arena.occam_test([winner,mlp],
 print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {learnabilities} \n Simplicities : {simplicities} \n Occam avg score: {sum(occam_scores)/len(occam_scores)}")
 
 
-'''
+
 
 best_arch, occam_scores, max_score_idx, learnability_scores, simplicity_scores = arena.pareto_selection(n_archs=18, n_rounds=5, verbose=True, randomizeHP=True)
 best_arch.save("pareto_best.pkl")
+
+'''
 # NOTE - O_winner_2archs might be OP for no reason
-
-
 # TODO - find the % of random archs beating MLP
 # TODO - uniform the input tensors
 # TODO - GNN encoding of archs (graph variational autoencoder)

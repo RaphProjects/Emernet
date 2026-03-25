@@ -392,8 +392,6 @@ class Arena:
             rank = occam_scores_sorted.index(occam_score)
             wrs[tested_arch] = rank/(len(occam_scores)-1)
 
-
-
         return wrs, occam_scores, norm_learn, norm_simp
 
 
