@@ -16,8 +16,6 @@ class ModuleType(Enum):
     INPUT = auto()
     DATA = auto()
 
-
-
 class MappingType(Enum):
     REDUCER = auto()
     MAPPER = auto()
@@ -47,6 +45,10 @@ class Module(ABC,torch.nn.Module):
     def random_parameters():
         return []
         
+    @abstractmethod
+    def todict(self):
+        return {"module_type":self.module_type, "Hparameters":None}
+
     def reset_state(self):
         pass
 

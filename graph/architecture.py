@@ -123,3 +123,6 @@ class Architecture(networkx.DiGraph):
             arch = pickle.load(f)
         print(f"Architecture loaded successfully from {filepath}")
         return arch
+
+    def todict(self):
+        nodes = [self.nodes[node]['module'].todict() for node in self.nodes]

@@ -96,15 +96,46 @@ def twolayersMLP():
     executor = Executor(architecture)
     executor.fit(inputTens, outputTargetTens, verbose=True, lr=0.002, max_iter=1000, batch_size=16, patience = 10, min_delta = 1e-7)
 
+def patch_module_types(arch):
+    for nid in arch.nodes:
+        mod = arch.nodes[nid]["module"]
 
+        if isinstance(mod, Input):
+            mod.module_type = ModuleType.INPUT
+        elif isinstance(mod, LearnableParameter):
+            mod.module_type = ModuleType.LEARNABLE
+        elif isinstance(mod, Activation):
+            mod.module_type = ModuleType.ACTIVATION
+        elif isinstance(mod, (Add, MatMul, Mult)):
+            mod.module_type = ModuleType.BASIC
+        elif isinstance(mod, (Pooling, Concat, Transpose, Shift, Split)):
+            mod.module_type = ModuleType.STRUCTURAL
+        elif isinstance(mod, Normalizer):
+            mod.module_type = ModuleType.NORM
+
+    return arch
 
     
 #twolayersMLP()
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-mlp = arena.make_mlp([32,16])
+mlp = arena.make_mlp([32,16,16])
 pareto_best = Architecture.load("pareto_best.pkl")
+pareto_best = patch_module_types(pareto_best)
 
+print("nodes:", list(pareto_best.nodes))
+print("edges:", list(pareto_best.edges))
+for nid in pareto_best.nodes:
+    mod = pareto_best.nodes[nid].get("module", None)
+    print(nid, type(mod), getattr(mod, "module_type", None), getattr(mod, "mapping_type", None))
+
+print(pareto_best.isValid())
+
+datasets = arena._load_real_datasets()
+print(arena.realDataSet_test_cached(pareto_best, datasets, verbose=True, max_iter=200, subsample=20_000))
+print(arena.realDataSet_test_cached(mlp, datasets, verbose=True, max_iter=200, subsample=20_000))
+
+'''
 mlp_wrs = []
 pareto_winner_wrs = []
 for i in range(10):
@@ -117,7 +148,7 @@ avg_pareto_winner_wr = sum(pareto_winner_wrs)/len(pareto_winner_wrs)
 
 
 
-'''
+
 simp_bals, avg_simp_bal, std_simp_bal = arena.tune_simp_bal(n_archs=12, n_rounds=4, verbose=True, randomizeHP=True, use_MLPs=True)
 print(f"simp_bals: {simp_bals}, avg: {avg_simp_bal}, std: {std_simp_bal}")
 
@@ -180,3 +211,4 @@ best_arch.save("pareto_best.pkl")
 # TODO - find the % of random archs beating MLP
 # TODO - uniform the input tensors
 # TODO - GNN encoding of archs (graph variational autoencoder)
+# TODO - A better arch descriptor

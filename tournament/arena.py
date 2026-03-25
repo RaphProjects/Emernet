@@ -619,7 +619,7 @@ class Arena:
 
 
 
-    def start(self, randomizeHP = False):
+    def OLD_start(self, randomizeHP = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
@@ -686,7 +686,7 @@ class Arena:
     
     #################### END OF TRAINING ####################
 
-    def test(self,architecture,arena_contestants = 3, n_test=8, verbose=False):
+    def OLD_test(self,architecture,arena_contestants = 3, n_test=8, verbose=False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
             max_batch_size = 2048
