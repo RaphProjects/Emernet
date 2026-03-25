@@ -167,7 +167,8 @@ class Arena:
             f"(distance={best_distance:.4f})")
         return self.pcp, best_outerfunction
 
-    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt", randomizeHP=False, pcp=None):
+    def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt", randomizeHP=False,
+                    pcp=None, uniform=False, input_noise = 0.05, output_noise = 0.01):
         device = torch.device('cuda' if torch.cuda.is_available() and not self.cpu else 'cpu')
 
         if device.type=='cuda':
@@ -204,7 +205,17 @@ class Arena:
 
             input_p = random.randint(1,16)
             input_f = random.randint(1,16)
-            input = torch.randn(self.dataset_size, input_p, input_f).to(device)
+            if uniform==True:
+                base = torch.linspace(0, 1, self.dataset_size).unsqueeze(1).unsqueeze(2)
+                base = base.expand(self.dataset_size, input_p, input_f)
+
+                mean = torch.randn(1, 1, input_f) * 2
+                std = torch.rand(1, 1, input_f) * 3 + 0.5
+
+                input = (base * std + mean).to(device)
+                input = input + torch.randn_like(input)*input_noise
+            else:
+                input = torch.randn(self.dataset_size, input_p, input_f).to(device)
 
         train_size = int(self.dataset_size*train_test_split)
         train_input = input[:train_size]
@@ -213,6 +224,9 @@ class Arena:
         # generate the outputs for each executor
         output_1 = (executors[0].forward(input))[0]
         output_2 = (executors[1].forward(input))[0]
+
+        output_1 += torch.randn_like(output_1)*output_noise
+        output_2 += torch.randn_like(output_2)*output_noise
 
         # Standardize the targets so amplitude/flatness gives no advantage
         std_1, mean_1 = torch.std_mean(output_1, dim=0, keepdim=True)

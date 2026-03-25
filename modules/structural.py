@@ -97,3 +97,51 @@ class Split(Module):
 
 
         return output_tensors
+
+class Shift(Module):
+    _mapping_type = MappingType.MAPPER
+    def __init__(self, amount, dim=1, name = None):
+        super().__init__(name, ModuleType.STRUCTURAL)
+        self.n_parameters = 0
+        self.amount = amount
+        self.dim = dim
+
+    @property
+    def mapping_type(self) -> MappingType:
+        return MappingType.MAPPER
+    
+    @staticmethod
+    def random_parameters():
+        return [random.choice([-1,+1]), random.choice([1,1,1,1,1,2])]
+    
+    def reset_state(self):
+        self.n_parameters = 0
+
+    def forward(self, inputTensors):
+
+        return [torch.roll(t, shifts=self.amount, dims=self.dim) for t in inputTensors]
+    
+class Transpose(Module):
+    _mapping_type = MappingType.MAPPER
+    def __init__(self, name = None):
+        super().__init__(name, ModuleType.STRUCTURAL)
+        self.n_parameters = 0
+
+    @property
+    def mapping_type(self) -> MappingType:
+        return MappingType.MAPPER
+    
+    @staticmethod
+    def random_parameters():
+        return None
+    
+    def reset_state(self):
+        self.n_parameters = 0
+
+    def forward(self, inputTensors):
+        output_tensors = []       
+
+        for i,t in enumerate(inputTensors): 
+            output_tensors.append(t.transpose(1,2))
+
+        return output_tensors

@@ -10,9 +10,12 @@ class ModuleType(Enum):
     MEMORY = auto()
     CONCATENATION = auto()
     STRUCTURAL = auto()
+    SOFTMAX = auto()
     LEARNABLE = auto()
     NORM = auto()
     INPUT = auto()
+    DATA = auto()
+
 
 
 class MappingType(Enum):

@@ -11,15 +11,20 @@ from modules.activations import *
 from modules.normalizer import *
 from modules.structural import *
 from modules.pooling import *
+from modules.softmax import *
 class Generator:
     def __init__(self, generation_type = "agnostic"):
         # self.architecture = Architecture()
         self.generation_type = generation_type
-        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat, Split, Pooling]
+        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
+                                   Split, Pooling, Transpose,SoftMax]
 
-    def generate(self, n_nodes=16)->Architecture:
+    def generate(self, n_nodes=12, randomize_n_nodes=True)->Architecture:
         generated = False
         iters = 0
+        if randomize_n_nodes:
+            perturbations = [-3, -2, -1, 0, 1, 2, 3, 4]
+            n_nodes+=random.choice(perturbations)
         if self.generation_type == "dense":
             while not generated and iters < 20:
                 try:
