@@ -17,7 +17,7 @@ class Generator:
         # self.architecture = Architecture()
         self.generation_type = generation_type
         self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
-                                   Split, Pooling, Transpose,SoftMax]
+                                   Split, Pooling, Transpose,SoftMax, Shift]
 
     def generate(self, n_nodes=12, randomize_n_nodes=True)->Architecture:
         generated = False
