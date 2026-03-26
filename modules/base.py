@@ -45,7 +45,6 @@ class Module(ABC,torch.nn.Module):
     def random_parameters():
         return []
         
-    @abstractmethod
     def todict(self):
         return {"module_type":self.module_type, "Hparameters":None}
 

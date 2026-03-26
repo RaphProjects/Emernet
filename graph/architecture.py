@@ -126,3 +126,5 @@ class Architecture(networkx.DiGraph):
 
     def todict(self):
         nodes = [self.nodes[node]['module'].todict() for node in self.nodes]
+        edges = self.edges
+        return {"nodes": nodes, "edges": edges}

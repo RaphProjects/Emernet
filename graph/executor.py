@@ -77,7 +77,7 @@ class Executor(torch.nn.Module):
 
 
 
-    def forward(self, input : torch.Tensor, current_node = None, cache_dict = None, verbose=False, adapting = False):
+    def forward_recursive(self, input : torch.Tensor, current_node = None, cache_dict = None, verbose=False, adapting = False):
         """
             returns the output of the current node
         """
@@ -134,6 +134,55 @@ class Executor(torch.nn.Module):
             
         
         return raw_outputs # not the output node, just return the raw outputs of this node's module
+    
+    def forward(self, input : torch.Tensor, verbose=False, adapting = False):
+        # get the topological order of the graph
+        print(hasattr(self.architecture, "topological_order"))
+        print(self.architecture.topological_order if hasattr(self.architecture, "topological_order") else "NO METHOD")
+        topo_order = self.architecture.topological_order()
+        nodes_outputs = {}
+        print(f"topological order: {topo_order}")
+        for node_id in topo_order:
+            print("node_id", node_id)
+            node = self.architecture.nodes[node_id]
+            if node['module'].mapping_type == MappingType.SOURCE:
+                if node['module'].module_type == ModuleType.INPUT:
+                    node['module'].set_data(input)
+                    print("input set")
+                nodes_outputs[node_id] = node['module'].forward()
+
+            
+        
+            else:
+                # construct the input to the node
+                input_tensors = []
+                for predecessor in self.architecture.predecessors(node_id):
+                    input_tensors.extend(nodes_outputs[predecessor])
+                print(f"Added input tensors from predecessors: {self.architecture.predecessors(node_id)}, forwarding to {node_id}")
+                nodes_outputs[node_id] = node['module'].forward(input_tensors)
+
+            if node_id == self.output_node:
+                print(f"node_id: {node_id} is the output node")
+                if adapting:# This means we are being called from the set_Output_Adapter method, we need to return the raw outputs
+                    return nodes_outputs[node_id]
+            
+                if not self.adapter:                          
+                    # Forward is called without having set the output adapter (forwarding without fitting)
+                    best_tensor, best_index = self.pick_output(nodes_outputs[node_id]) # pick_output will handle selecting the biggest batch size
+                    self.output_index = best_index
+                    return [best_tensor]
+                
+                # here we are not adapting nor forwarding without adapting : we are fitting
+                best_output = nodes_outputs[node_id][self.output_index]
+                adapted_output = self.output_adapter(best_output)
+                return [adapted_output]
+            
+                        
+
+            
+
+            
+        
 
     def randomize_weights(self):
         for param in self.parameters():

@@ -122,20 +122,23 @@ arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_si
 mlp = arena.make_mlp([32,16,16])
 pareto_best = Architecture.load("pareto_best.pkl")
 pareto_best = patch_module_types(pareto_best)
+mlp_sizes = [[16,32,32]]
+archs = []
+for size in mlp_sizes:
+    archs.append(arena.make_mlp(size))
 
+
+archs.append(pareto_best)
+
+wrs, occam_scores, norm_learn, norm_simp = arena.occam_test(archs, n_archs=9, verbose=True, randomizeHP=True)
+print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {norm_learn} \n Simplicities : {norm_simp}")
+'''
 print("nodes:", list(pareto_best.nodes))
 print("edges:", list(pareto_best.edges))
-for nid in pareto_best.nodes:
-    mod = pareto_best.nodes[nid].get("module", None)
-    print(nid, type(mod), getattr(mod, "module_type", None), getattr(mod, "mapping_type", None))
+print("MLP params:", mlp.parameter_count(), "| Pareto params:", pareto_best.parameter_count())
 
-print(pareto_best.isValid())
 
-datasets = arena._load_real_datasets()
-print(arena.realDataSet_test_cached(pareto_best, datasets, verbose=True, max_iter=200, subsample=20_000))
-print(arena.realDataSet_test_cached(mlp, datasets, verbose=True, max_iter=200, subsample=20_000))
 
-'''
 mlp_wrs = []
 pareto_winner_wrs = []
 for i in range(10):
