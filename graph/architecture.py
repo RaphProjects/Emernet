@@ -120,23 +120,6 @@ class Architecture(networkx.DiGraph):
 
 
     def topological_nodes(self):
-        print("I'm in")
-        '''
-        layers = [[0]]
-        n_nodes_added = 1
-        while n_nodes_added<len(self.nodes):
-            print(f"{n_nodes_added}/{len(self.nodes)} added")
-            layers.append([])
-            for layer_node in layers[-2]:
-                direct_successors = self.direct_successors(layer_node)
-                for successor in direct_successors:
-                    layers[-1].append(successor)
-                    n_nodes_added+=1
-
-        sorted_nodes = []
-        for layer in layers:
-            sorted.extend(layer)
-        '''
         sorted_nodes = []
 
         distances={}

@@ -31,7 +31,8 @@ class Executor(torch.nn.Module):
         self.output_node = architecture.get_Output_id()
         self.adapter = False
 
-        topo_order = list(networkx.topological_sort(self.architecture))
+        self.topo_order = list(networkx.topological_sort(self.architecture))
+        self.node_inputs = {n: list(self.architecture.predecessors(n)) for n in self.topo_order}
 
     def pick_output(self, raw_outputs, target_shape=None):
         indexed = list(enumerate(raw_outputs))
@@ -141,18 +142,13 @@ class Executor(torch.nn.Module):
     
     def forward(self, input : torch.Tensor, verbose=False, adapting = False):
         # get the topological order of the graph
-        print("about to call topological nodes")
-        topo_order = self.architecture.topological_nodes()
-        print(topo_order)
+        topo_order = self.topo_order
         nodes_outputs = {}
-        print(f"topological order: {topo_order}")
         for node_id in topo_order:
-            print("node_id", node_id)
             node = self.architecture.nodes[node_id]
             if node['module'].mapping_type == MappingType.SOURCE:
                 if node['module'].module_type == ModuleType.INPUT:
                     node['module'].set_data(input)
-                    print("input set")
                 nodes_outputs[node_id] = node['module'].forward()
 
             
@@ -160,13 +156,11 @@ class Executor(torch.nn.Module):
             else:
                 # construct the input to the node
                 input_tensors = []
-                for predecessor in self.architecture.predecessors(node_id):
+                for predecessor in self.node_inputs[node_id]:
                     input_tensors.extend(nodes_outputs[predecessor])
-                print(f"Added input tensors from predecessors: {self.architecture.predecessors(node_id)}, forwarding to {node_id}")
                 nodes_outputs[node_id] = node['module'].forward(input_tensors)
 
             if node_id == self.output_node:
-                print(f"node_id: {node_id} is the output node")
                 if adapting:# This means we are being called from the set_Output_Adapter method, we need to return the raw outputs
                     return nodes_outputs[node_id]
             

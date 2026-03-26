@@ -37,6 +37,7 @@ print(n_archs_from_minutes(110))
 
 
 """
+382.2779071331024
 [0.7469304076094267, 0.4510897695167949, 0.12143144596785022, 0.46276275266871164]
 A QD method like MAP-Elites could keep an archive over behavioral descriptors such as:
 

@@ -115,6 +115,7 @@ def patch_module_types(arch):
 
     return arch
 
+
     
 #twolayersMLP()
 
@@ -129,9 +130,10 @@ for size in mlp_sizes:
 
 
 #archs.append(pareto_best)
-
+start_time = time.time()
 wrs, occam_scores, norm_learn, norm_simp = arena.occam_test(archs, n_archs=9, verbose=True, randomizeHP=True)
 print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {norm_learn} \n Simplicities : {norm_simp}")
+print(f"Time taken: {time.time()-start_time}")
 '''
 print("nodes:", list(pareto_best.nodes))
 print("edges:", list(pareto_best.edges))
