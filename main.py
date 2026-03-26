@@ -128,7 +128,7 @@ for size in mlp_sizes:
     archs.append(arena.make_mlp(size))
 
 
-archs.append(pareto_best)
+#archs.append(pareto_best)
 
 wrs, occam_scores, norm_learn, norm_simp = arena.occam_test(archs, n_archs=9, verbose=True, randomizeHP=True)
 print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {norm_learn} \n Simplicities : {norm_simp}")

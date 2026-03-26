@@ -77,6 +77,82 @@ class Architecture(networkx.DiGraph):
         
         return True
 
+    def direct_successors(self,target_node):
+        direct_successors=[]
+        for edge in self.edges:
+            if edge[0]==target_node:
+                direct_successors.append(edge[1])
+        return direct_successors
+    
+    def direct_ancestors(self,target_node):
+        direct_ancestors=[]
+        for edge in self.edges:
+            if edge[1]==target_node:
+                direct_ancestors.append(edge[0])
+        return direct_ancestors
+    
+    def distance(self, node_A, node_B):
+        if node_A==node_B:
+            return 0
+        distance = 1
+        flag=False
+        nodes_at_distance = {}
+        for successor in self.direct_successors(node_A):
+            nodes_at_distance['1'].append(successor)
+        for ancestor in self.direct_ancestors(node_A):
+            nodes_at_distance['1'].append(ancestor)
+        
+        while flag==False:
+            for node in nodes_at_distance[f'{distance}']:
+                nodes_at_distance[f'{distance+1}'] = []
+                for successor in self.direct_successors(node):
+                    nodes_at_distance[f'{distance+1}'].append(successor)
+                for ancestor in self.direct_ancestors(node):
+                    nodes_at_distance[f'{distance+1}'].append(ancestor)
+                if node_B in nodes_at_distance[f'{distance+1}']:
+                    flag=True
+                    break
+                else:
+                    print(f"node {node_B} is not in {nodes_at_distance[f'{distance+1}']}")
+                distance+=1
+        return distance
+
+
+
+    def topological_nodes(self):
+        print("I'm in")
+        '''
+        layers = [[0]]
+        n_nodes_added = 1
+        while n_nodes_added<len(self.nodes):
+            print(f"{n_nodes_added}/{len(self.nodes)} added")
+            layers.append([])
+            for layer_node in layers[-2]:
+                direct_successors = self.direct_successors(layer_node)
+                for successor in direct_successors:
+                    layers[-1].append(successor)
+                    n_nodes_added+=1
+
+        sorted_nodes = []
+        for layer in layers:
+            sorted.extend(layer)
+        '''
+        sorted_nodes = []
+
+        distances={}
+        print(self.nodes)
+        for node in self.nodes:
+            distances['node']=self.distance(node,0)
+        layers = []
+        for _ in range(max(distances.keys)):
+            layers.append([])
+        for node in distances.keys:
+            layers[distances['node']].append(int(node))
+        for layer in layers:
+            for node in layer:
+                sorted_nodes.append(node)
+        return sorted_nodes
+
     def describe(self):
         for node in self.nodes:
             print(f"Node {node} is of type {self.nodes[node]['module'].module_type}")

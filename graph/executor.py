@@ -141,7 +141,9 @@ class Executor(torch.nn.Module):
     
     def forward(self, input : torch.Tensor, verbose=False, adapting = False):
         # get the topological order of the graph
-        topo_order = self.topological_order()
+        print("about to call topological nodes")
+        topo_order = self.architecture.topological_nodes()
+        print(topo_order)
         nodes_outputs = {}
         print(f"topological order: {topo_order}")
         for node_id in topo_order:
