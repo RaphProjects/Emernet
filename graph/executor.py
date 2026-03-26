@@ -9,6 +9,8 @@ from modules.input import *
 from modules.learnable import *
 from modules.memory import *
 from modules.operations import *
+import networkx
+
 
 class Executor(torch.nn.Module):
     def __init__(self, architecture : Architecture):
@@ -28,6 +30,8 @@ class Executor(torch.nn.Module):
 
         self.output_node = architecture.get_Output_id()
         self.adapter = False
+
+        topo_order = list(networkx.topological_sort(self.architecture))
 
     def pick_output(self, raw_outputs, target_shape=None):
         indexed = list(enumerate(raw_outputs))
@@ -137,9 +141,7 @@ class Executor(torch.nn.Module):
     
     def forward(self, input : torch.Tensor, verbose=False, adapting = False):
         # get the topological order of the graph
-        print(hasattr(self.architecture, "topological_order"))
-        print(self.architecture.topological_order if hasattr(self.architecture, "topological_order") else "NO METHOD")
-        topo_order = self.architecture.topological_order()
+        topo_order = self.topological_order()
         nodes_outputs = {}
         print(f"topological order: {topo_order}")
         for node_id in topo_order:
