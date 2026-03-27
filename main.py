@@ -225,3 +225,5 @@ best_arch.save("pareto_best.pkl")
 # TODO - fit delay penalty
 # TODO - Turing Completeness of modules
 # TODO - remove tested archs from normalization (useless if we use precomputed learnability mean and std)
+
+# TODO - check for leakage in fit (early stopping)
