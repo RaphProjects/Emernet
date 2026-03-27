@@ -726,7 +726,7 @@ class Arena:
         return learnabilities_mean, learnabilities_std
                 
 
-    def find_golden_pool(self, n_pools=20, n_archs=12, verbose=False, randomizeHP=True, simp_bal=None):
+    def find_golden_pool(self, n_pools=20, n_archs=12, n_refs_tests=4, verbose=False, randomizeHP=True, simp_bal=None):
         if simp_bal is None:
             simp_bal = self.simp_bal
         generator = Generator(generation_type=self.generation_type)
@@ -749,8 +749,30 @@ class Arena:
                 wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
                 refs_occams[ref_i].append(occam_scores[0])
 
-        for ref_i in enumerate(refs_occams):
-            pass
+
+        refs_sum = [refs_occams[0]]
+        for ref_i in range(1, len(refs_occams)):
+            for idx, occam in enumerate(refs_occams[ref_i]):
+                refs_sum[idx] += occam
+
+        score_avg = sum(refs_sum) / len(refs_sum)
+        distances = [abs(score_avg - score) for score in refs_sum]
+        min_idx = distances.index(min(distances))
+        golden_pool = pool_bank[min_idx]
+
+        # evaluate golden pool compared to random pools on n_tests archs
+        ref_archs = [generator.generate(self.architecture_size) for _ in range(n_refs_tests)]
+
+        for ref_i in range(n_refs_tests):
+            archs = [ref_archs[ref_i]]
+            archs.extend(golden_pool)
+            wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
+            golden_learnability = occam_scores[0]
+
+
+        
+
+        
                 
 
                 
