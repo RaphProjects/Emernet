@@ -12,12 +12,13 @@ from modules.normalizer import *
 from modules.structural import *
 from modules.pooling import *
 from modules.softmax import *
+from modules.memory import *
 class Generator:
     def __init__(self, generation_type = "agnostic"):
         # self.architecture = Architecture()
         self.generation_type = generation_type
         self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
-                                   Split, Pooling, Transpose,SoftMax, Shift]
+                                   Split, Pooling, Transpose,SoftMax, Shift, Accumulator, EMA]
 
     def generate(self, n_nodes=12, randomize_n_nodes=True)->Architecture:
         generated = False

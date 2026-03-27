@@ -164,3 +164,17 @@ class MatMul(Module):
             mulTensors = torch.matmul(self.projections[i-1](mulTensors), inputTensors[i])
 
         return [mulTensors]
+
+
+class Accumulator(Module):
+    _mapping_type = MappingType.MAPPER
+    def __init__(self, name=None):
+        super().__init__(name, ModuleType.BASIC)
+        self.n_parameters = 0
+
+    @property
+    def mapping_type(self) -> MappingType:
+        return MappingType.MAPPER
+
+    def forward(self, inputTensors):
+        return [torch.cumsum(t, dim=1) for t in inputTensors]

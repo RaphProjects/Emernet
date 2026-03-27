@@ -145,3 +145,4 @@ class Transpose(Module):
             output_tensors.append(t.transpose(1,2))
 
         return output_tensors
+

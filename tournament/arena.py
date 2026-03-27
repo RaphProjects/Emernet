@@ -41,7 +41,7 @@ class Arena:
         self.report = report
         self.pcp = pcp # parameter complexity penalty exponent
         self.cpu = cpu
-        self.simp_bal = simp_bal
+        self.simp_bal = 0 # simplicity didn't show any advantage
 
     def calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
                     initial_step=0.1, step_decay=0.98, verbose=True, 
@@ -617,7 +617,77 @@ class Arena:
         std_simp_bal = math.sqrt(sum((v - avg_simp_bal) ** 2 for v in simp_bal_values) / len(simp_bal_values))
         return simp_bal_values , avg_simp_bal, std_simp_bal
 
+    def get_learnability_data(self, n_tests=256, recent_size=16, verbose=False, randomizeHP=True, simp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
+        generator = Generator(generation_type=self.generation_type)
+        learnabilities = []
+        recent_means = [] # Used to measure convergence
+        recent_stds = []
 
+        # Prefill to avoid problems with the std
+        arch_A = generator.generate(self.architecture_size)
+        arch_B = generator.generate(self.architecture_size)
+        score_A, score_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0)
+        learnabilities.append(score_A)
+        learnabilities.append(score_B)
+        
+        for test in range(n_tests):
+            if verbose:
+                print(f"Test {test+1}/{n_tests}")
+            arch_A = generator.generate(self.architecture_size)
+            arch_B = generator.generate(self.architecture_size)
+            score_A, score_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0)
+            learnabilities.append(math.log(max(score_A, 1e-10)))
+            learnabilities.append(math.log(max(score_B, 1e-10)))
+            learnabilities_mean = sum(learnabilities) / len(learnabilities)
+            learnabilities_std = math.sqrt(sum((v - learnabilities_mean) ** 2 for v in learnabilities) / len(learnabilities))
+            print(f"learnability mean: {learnabilities_mean}, std: {learnabilities_std}")
+            recent_means.append(learnabilities_mean)
+            recent_stds.append(learnabilities_std)
+            if len(recent_means) > recent_size:
+                # Handle learnabilities means first
+                recent_means.pop(0)
+                recent_means_std = math.sqrt(sum((v - recent_means[-1]) ** 2 for v in recent_means) / len(recent_means))
+                if verbose:
+                    print(f"recent means std: {recent_means_std}")
+
+                # Handle learnabilities stds
+                recent_stds.pop(0)
+                recent_stds_std = math.sqrt(sum((v - recent_stds[-1]) ** 2 for v in recent_stds) / len(recent_stds))
+                if verbose:
+                    print(f"recent stds std: {recent_stds_std}")
+            
+        print(f"Final mean {learnabilities_mean}, std {learnabilities_std}")
+        print(f"mean convergence: {recent_means_std}, std convergence: {recent_stds_std}")
+
+        return learnabilities_mean, learnabilities_std
+                
+
+            
+
+            
+
+
+    def find_golden_pool(self, n_pools=20, n_archs=12, verbose=False, randomizeHP=True, simp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
+        generator = Generator(generation_type=self.generation_type)
+        references_bank = [self.make_mlp(hidden_sizes=[32,32,64]), self.make_mlp(hidden_sizes=[8,12]), 
+                            Architecture.load('pareto_arch_patched.pkl'),
+                            generator.generate(self.architecture_size), generator.generate(self.architecture_size)]
+        pool_bank = []
+        if verbose:
+            print(f"Generating {n_pools} pools of {n_archs} architectures...")
+        for i in range(n_pools):
+            pool_bank.append(generator.generate(self.architecture_size) for _ in range(n_archs))
+        
+        for pool_i in range(n_pools):
+            for ref_i in range(len(references_bank)):
+                pass # TODO FINISH THE METHOD
+
+
+        
 
     def OLD_start(self, randomizeHP = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

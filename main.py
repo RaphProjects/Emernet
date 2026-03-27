@@ -123,6 +123,8 @@ arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_si
 mlp = arena.make_mlp([32,16,16])
 pareto_best = Architecture.load("pareto_best.pkl")
 pareto_best = patch_module_types(pareto_best)
+pareto_best.save("pareto_arch_patched.pkl")
+'''
 mlp_sizes = [[16,32,32]]
 archs = []
 for size in mlp_sizes:
@@ -134,7 +136,7 @@ start_time = time.time()
 wrs, occam_scores, norm_learn, norm_simp = arena.occam_test(archs, n_archs=9, verbose=True, randomizeHP=True)
 print(f"Winrates : {wrs} \n Occam scores : {occam_scores} \n Learnabilities : {norm_learn} \n Simplicities : {norm_simp}")
 print(f"Time taken: {time.time()-start_time}")
-'''
+
 print("nodes:", list(pareto_best.nodes))
 print("edges:", list(pareto_best.edges))
 print("MLP params:", mlp.parameter_count(), "| Pareto params:", pareto_best.parameter_count())
@@ -217,3 +219,9 @@ best_arch.save("pareto_best.pkl")
 # TODO - uniform the input tensors
 # TODO - GNN encoding of archs (graph variational autoencoder)
 # TODO - A better arch descriptor
+
+# TODO - finish golden pool finder
+# TODO - method to compute the average and std of learnability
+# TODO - fit delay penalty
+# TODO - Turing Completeness of modules
+# TODO - remove tested archs from normalization (useless if we use precomputed learnability mean and std)

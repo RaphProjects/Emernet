@@ -37,3 +37,4 @@ class Pooling(Module):
             for i,t in enumerate(inputTensors): 
                 output_tensors.append(torch.median(t,dim=self.dimension, keepdim=True).values)
         return output_tensors
+
