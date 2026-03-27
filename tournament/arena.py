@@ -29,7 +29,7 @@ from graph.generator import *
 class Arena:
     def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64,
                   train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=0.38,
-                    cpu=False, simp_bal=0.36, avg_learn = 1, std_learn=1, speed_bal=0.3):
+                    cpu=False, simp_bal=0.36, speed_bal=0.3):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
@@ -43,8 +43,8 @@ class Arena:
         self.pcp = pcp # parameter complexity penalty exponent
         self.cpu = cpu
         self.simp_bal = 0 # simplicity didn't show any advantage
-        self.avg_learn = avg_learn
-        self.std_learn = std_learn
+        self.avg_learn = -0.210 # estimated over 225 runs, error +- 0.023
+        self.std_learn = 3.562 # estimated over 225 runs, error +- 0.017
         self.speed_bal = speed_bal
 
     def calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
@@ -252,14 +252,14 @@ class Arena:
         if randomizeHP:
             l1_start_time = time.time()
             learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = self.cpu)
-            l1_delay = time.time - l1_start_time
+            l1_delay = time.time() - l1_start_time
             l2_start_time = time.time()
             learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=random_lr, max_iter=random_max_iter, batch_size=min(train_size,random_batch_size), patience = random_patience, min_delta = random_min_delta, cpu = self.cpu)
             l2_delay = time.time()-l2_start_time
         else:
             l1_start_time = time.time()
             learner_1.fit(train_input, train_target_1.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = self.cpu)
-            l1_delay = time.time - l1_start_time
+            l1_delay = time.time() - l1_start_time
             l2_start_time = time.time()
             learner_2.fit(train_input, train_target_2.detach(), verbose=self.verbose, lr=0.01, max_iter=200, batch_size=min(train_size,max_batch_size), patience = 10, min_delta = 1e-7, cpu = self.cpu)
             l2_delay = time.time()-l2_start_time
@@ -365,7 +365,7 @@ class Arena:
         simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
         speed_scores = [score/(n_archs-1) for score in speed_scores]
         if use_learn_values : 
-            norm_learn = (learnability_scores-self.avg_learn)/self.std_learn
+            norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnability_scores]
         else : 
             norm_learn = z_normalize(learnability_scores)
         norm_simp = z_normalize(simplicity_scores)
@@ -446,7 +446,7 @@ class Arena:
 
 
         if use_learn_data:
-            norm_learn = (learnabilities-self.avg_learn)/self.std_learn
+            norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnabilities]
         else : 
             norm_learn = z_normalize(learnabilities)
         norm_simp = z_normalize(simplicities)
@@ -679,54 +679,82 @@ class Arena:
         std_simp_bal = math.sqrt(sum((v - avg_simp_bal) ** 2 for v in simp_bal_values) / len(simp_bal_values))
         return simp_bal_values , avg_simp_bal, std_simp_bal
 
-    def get_learnability_data(self, n_tests=256, recent_size=16, verbose=False, randomizeHP=True, simp_bal=None):
+    def get_learnability_and_delays_data(self, n_tests=256, recent_size=16, verbose=False, randomizeHP=True, simp_bal=None):
         if simp_bal is None:
             simp_bal = self.simp_bal
         generator = Generator(generation_type=self.generation_type)
         learnabilities = []
-        recent_means = [] # Used to measure convergence
-        recent_stds = []
+        speeds = []
+        recent_learn_means = []
+        recent_learn_stds = []
+        recent_speed_means = []
+        recent_speed_stds = []
 
-        # Prefill to avoid problems with the std
+        # Prefill
         arch_A = generator.generate(self.architecture_size)
         arch_B = generator.generate(self.architecture_size)
-        score_A, score_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0)
-        learnabilities.append(score_A)
-        learnabilities.append(score_B)
-        
+        score_A, score_B, delay_A, delay_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0, get_delays=True)
+        learnabilities.append(math.log(max(score_A, 1e-10)))
+        learnabilities.append(math.log(max(score_B, 1e-10)))
+        speeds.append(math.log(max(1.0 / max(delay_A, 1e-10), 1e-10)))
+        speeds.append(math.log(max(1.0 / max(delay_B, 1e-10), 1e-10)))
+
+        learn_means_std = 0
+        learn_stds_std = 0
+        speed_means_std = 0
+        speed_stds_std = 0
+
         for test in range(n_tests):
             if verbose:
                 print(f"Test {test+1}/{n_tests}")
             arch_A = generator.generate(self.architecture_size)
             arch_B = generator.generate(self.architecture_size)
-            score_A, score_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0)
+            score_A, score_B, delay_A, delay_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0, get_delays=True)
+
             learnabilities.append(math.log(max(score_A, 1e-10)))
             learnabilities.append(math.log(max(score_B, 1e-10)))
-            learnabilities_mean = sum(learnabilities) / len(learnabilities)
-            learnabilities_std = math.sqrt(sum((v - learnabilities_mean) ** 2 for v in learnabilities) / len(learnabilities))
-            print(f"learnability mean: {learnabilities_mean}, std: {learnabilities_std}")
-            recent_means.append(learnabilities_mean)
-            recent_stds.append(learnabilities_std)
-            if len(recent_means) > recent_size:
-                # Handle learnabilities means first
-                recent_means.pop(0)
-                recent_means_std = math.sqrt(sum((v - recent_means[-1]) ** 2 for v in recent_means) / len(recent_means))
-                if verbose:
-                    print(f"recent means std: {recent_means_std}")
+            speeds.append(math.log(max(1.0 / max(delay_A, 1e-10), 1e-10)))
+            speeds.append(math.log(max(1.0 / max(delay_B, 1e-10), 1e-10)))
 
-                # Handle learnabilities stds
-                recent_stds.pop(0)
-                recent_stds_std = math.sqrt(sum((v - recent_stds[-1]) ** 2 for v in recent_stds) / len(recent_stds))
-                if verbose:
-                    print(f"recent stds std: {recent_stds_std}")
-            
-        print(f"Final mean {learnabilities_mean}, std {learnabilities_std}")
-        print(f"mean convergence: {recent_means_std}, std convergence: {recent_stds_std}")
+            # Learnability stats
+            learn_mean = sum(learnabilities) / len(learnabilities)
+            learn_std = math.sqrt(sum((v - learn_mean) ** 2 for v in learnabilities) / len(learnabilities))
+            recent_learn_means.append(learn_mean)
+            recent_learn_stds.append(learn_std)
 
-        return learnabilities_mean, learnabilities_std
+            # Speed stats
+            speed_mean = sum(speeds) / len(speeds)
+            speed_std = math.sqrt(sum((v - speed_mean) ** 2 for v in speeds) / len(speeds))
+            recent_speed_means.append(speed_mean)
+            recent_speed_stds.append(speed_std)
+
+            if len(recent_learn_means) > recent_size:
+                recent_learn_means.pop(0)
+                recent_learn_stds.pop(0)
+                recent_speed_means.pop(0)
+                recent_speed_stds.pop(0)
+
+                learn_means_std = math.sqrt(sum((v - recent_learn_means[-1]) ** 2 for v in recent_learn_means) / len(recent_learn_means))
+                learn_stds_std = math.sqrt(sum((v - recent_learn_stds[-1]) ** 2 for v in recent_learn_stds) / len(recent_learn_stds))
+                speed_means_std = math.sqrt(sum((v - recent_speed_means[-1]) ** 2 for v in recent_speed_means) / len(recent_speed_means))
+                speed_stds_std = math.sqrt(sum((v - recent_speed_stds[-1]) ** 2 for v in recent_speed_stds) / len(recent_speed_stds))
+
+                if verbose:
+                    print(f"  Learn convergence: mean_std={learn_means_std:.4f}, std_std={learn_stds_std:.4f}")
+                    print(f"  Speed convergence: mean_std={speed_means_std:.4f}, std_std={speed_stds_std:.4f}")
+
+            print(f"Learn mean: {learn_mean:.4f}, std: {learn_std:.4f} | Speed mean: {speed_mean:.4f}, std: {speed_std:.4f}")
+
+        print(f"\n=== Final Results ===")
+        print(f"Learnability: mean={learn_mean:.4f}, std={learn_std:.4f}")
+        print(f"Speed:        mean={speed_mean:.4f}, std={speed_std:.4f}")
+        print(f"Learn convergence: mean_std={learn_means_std:.4f}, std_std={learn_stds_std:.4f}")
+        print(f"Speed convergence: mean_std={speed_means_std:.4f}, std_std={speed_stds_std:.4f}")
+
+        return learn_mean, learn_std, speed_mean, speed_std
                 
 
-    def find_golden_pool(self, n_pools=20, n_archs=12, n_refs_tests=4, verbose=False, randomizeHP=True, simp_bal=None):
+    def find_golden_pool(self, n_pools=20, n_archs=12, n_refs_tests=2, n_tst_pools=6, verbose=False, randomizeHP=True, simp_bal=None):
         if simp_bal is None:
             simp_bal = self.simp_bal
         generator = Generator(generation_type=self.generation_type)
@@ -737,7 +765,7 @@ class Arena:
         if verbose:
             print(f"Generating {n_pools} pools of {n_archs} architectures...")
         for i in range(n_pools):
-            pool_bank.append(generator.generate(self.architecture_size) for _ in range(n_archs))
+            pool_bank.append([generator.generate(self.architecture_size) for _ in range(n_archs)]) 
         
 
         refs_occams = [] # list of lists
@@ -750,36 +778,47 @@ class Arena:
                 refs_occams[ref_i].append(occam_scores[0])
 
 
-        refs_sum = [refs_occams[0]]
+        refs_sum = [copy.deepcopy(refs_occams[0])]
         for ref_i in range(1, len(refs_occams)):
             for idx, occam in enumerate(refs_occams[ref_i]):
                 refs_sum[idx] += occam
 
-        score_avg = sum(refs_sum) / len(refs_sum)
-        distances = [abs(score_avg - score) for score in refs_sum]
-        min_idx = distances.index(min(distances))
+        true_means = [sum(pool_scores) / n_pools for pool_scores in refs_occams]
+        
+        pool_errors = [0.0] * n_pools
+        for pool_i in range(n_pools):
+            mse = 0.0
+            for ref_i in range(len(references_bank)):
+                mse += (refs_occams[ref_i][pool_i] - true_means[ref_i]) ** 2
+            pool_errors[pool_i] = mse / len(references_bank)
+            
+        min_idx = pool_errors.index(min(pool_errors))
         golden_pool = pool_bank[min_idx]
 
         # evaluate golden pool compared to random pools on n_tests archs
         ref_archs = [generator.generate(self.architecture_size) for _ in range(n_refs_tests)]
-
+        distances_to_mean = []
         for ref_i in range(n_refs_tests):
-            archs = [ref_archs[ref_i]]
-            archs.extend(golden_pool)
+            archs = [ref_archs[ref_i]] + golden_pool
             wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
             golden_learnability = occam_scores[0]
 
-
+            # We compare it to the mean in a few random pools
+            learnabilities = []
+            for tst_i in range(n_tst_pools):
+                random_pool = [generator.generate(self.architecture_size) for _ in range(n_archs)]
+                archs = [ref_archs[ref_i]] + random_pool
+                wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
+                learnabilities.append(occam_scores[0])
+            mean_learnability = sum(learnabilities) / len(learnabilities)
+            distances_to_mean.append(abs(mean_learnability - golden_learnability))
         
-
+        avg_distance = sum(distances_to_mean) / len(distances_to_mean)
+        print(f"Average absolute distance of Golden Pool from True Mean on UNSEEN archs: {avg_distance:.4f}")
         
-                
+        return golden_pool
 
-                
-
-
-        
-
+            
     def OLD_start(self, randomizeHP = False):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if device.type=='cuda':
