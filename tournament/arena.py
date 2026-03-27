@@ -748,6 +748,9 @@ class Arena:
                 archs.extend(pool_bank[pool_i])
                 wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
                 refs_occams[ref_i].append(occam_scores[0])
+
+        for ref_i in enumerate(refs_occams):
+            pass
                 
 
                 
