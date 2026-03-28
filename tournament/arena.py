@@ -43,11 +43,13 @@ class Arena:
         self.pcp = pcp # parameter complexity penalty exponent
         self.cpu = cpu
         self.simp_bal = 0 # simplicity didn't show any advantage
-        self.avg_learn = -0.210 # estimated over 225 runs, error +- 0.023
-        self.std_learn = 3.562 # estimated over 225 runs, error +- 0.017
+        self.avg_learn = 0.5074 # estimated over 512 runs, error +- 0.0056
+        self.std_learn = 1.4965 # estimated over 512 runs, error +- 0.0024
+        self.avg_speed = -2.2863 # estimated over 512 runs, error +- 0.0115
+        self.std_speed = 1.4867 # estimated over 512 runs, error +- 0.0055
         self.speed_bal = speed_bal
 
-    def calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
+    def OLD_calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
                     initial_step=0.1, step_decay=0.98, verbose=True, 
                     finalvalsize=32):
         """
@@ -171,6 +173,11 @@ class Arena:
             f"(distance={best_distance:.4f})")
         return self.pcp, best_outerfunction
 
+
+    def _valid(self, *values, min_val=1e-10):
+        return all(math.isfinite(v) and v > min_val for v in values)
+
+
     def get_scores(self, arch_1, arch_2, input = None, get_penalties=False, outerfunction="sqrt", randomizeHP=False,
                     pcp=None, uniform=False, input_noise = 0.05, output_noise = 0.01, get_delays=False):
         device = torch.device('cuda' if torch.cuda.is_available() and not self.cpu else 'cpu')
@@ -277,6 +284,7 @@ class Arena:
             if not math.isfinite(test_loss_2) or test_loss_2 <= 0:
                 test_loss_2 = 1e10
 
+            '''
             if pcp==0:
                 score_1 = (1/(test_loss_1))**0.5 # the higher the better
                 score_2 = (1/(test_loss_2))**0.5
@@ -284,7 +292,7 @@ class Arena:
                 del executors[0], learner_1, learner_2 #because executors[0] is our previous executors[1] (executors[0] was deleted, which made executors[1] become executors[0]))
                 torch.cuda.empty_cache()
                 return score_1, score_2
-
+            '''
             # compute the scores
             if outerfunction == "log2":
                 K_1 = math.log2(max(2,arch_1.parameter_count()))
@@ -313,7 +321,7 @@ class Arena:
                 return score_1,score_2,l1_delay,l2_delay
             return score_1, score_2
 
-    def occam_selection(self, n_archs=16, verbose=False, randomizeHP=True, use_delays=True, use_learn_values=True,
+    def occam_selection(self, n_archs=16, verbose=False, randomizeHP=True, use_delays=True, use_cached_norm=True,
                         simp_bal=None, speed_bal=None):
         if simp_bal is None:
             simp_bal = self.simp_bal
@@ -364,8 +372,9 @@ class Arena:
         learnability_scores = [score/(n_archs-1) for score in learnability_scores]
         simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
         speed_scores = [score/(n_archs-1) for score in speed_scores]
-        if use_learn_values : 
+        if use_cached_norm : 
             norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnability_scores]
+            norm_speed = [(s - self.avg_speed) / self.std_speed for s in speed_scores]
         else : 
             norm_learn = z_normalize(learnability_scores)
         norm_simp = z_normalize(simplicity_scores)
@@ -375,7 +384,7 @@ class Arena:
 
 
         if use_delays: 
-            occam_scores = [((norm_learn[i]*(1-speed_bal)) + (speed_scores[i]*(speed_bal)))
+            occam_scores = [((norm_learn[i]*(1-speed_bal)) + (norm_speed[i]*(speed_bal)))
                          for i in range(n_archs)]
         else : 
             occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal)))
@@ -390,7 +399,7 @@ class Arena:
         return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, simplicity_scores
         
     def occam_test(self, ori_architectures, n_archs=8, verbose=False, randomizeHP=True,
-                    simp_bal=None, use_learn_data=True, use_delays=True, speed_bal = None):
+                    simp_bal=None, use_cached_norm=True, use_delays=True, speed_bal = None):
         if simp_bal is None:
             simp_bal = self.simp_bal
         if speed_bal is None:
@@ -445,8 +454,9 @@ class Arena:
             return [(v - mu) / sigma for v in values]
 
 
-        if use_learn_data:
+        if use_cached_norm:
             norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnabilities]
+            norm_speed = [(s - self.avg_speed) / self.std_speed for s in speeds]
         else : 
             norm_learn = z_normalize(learnabilities)
         norm_simp = z_normalize(simplicities)
@@ -455,7 +465,7 @@ class Arena:
         # TODO - NORMALIZE SPEED
 
         if use_delays: 
-            occam_scores = [((norm_learn[i]*(1-speed_bal)) + (speeds[i]*(speed_bal)))
+            occam_scores = [((norm_learn[i]*(1-speed_bal)) + (norm_speed[i]*(speed_bal)))
                          for i in range(n_archs)]
         else : 
             occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal)))
@@ -470,41 +480,6 @@ class Arena:
 
         return wrs, occam_scores, norm_learn, norm_simp
 
-
-    def OLDsmooth_selection(self, n_archs=16, max_fights=256, verbose=False, randomizeHP=True):
-        generator = Generator(generation_type=self.generation_type)
-        architectures = [generator.generate(self.architecture_size) for _ in range(n_archs)]
-        arch_scores = [0 for _ in range(n_archs)]
-        
-        n_fights = 0
-        total_pairs = min(max_fights, n_archs * (n_archs - 1) // 2)
-        
-        for i in range(n_archs):
-            for j in range(i + 1, n_archs):
-                if verbose:
-                    print(f"Fight {n_fights + 1}/{total_pairs}: arch {i} vs {j}")
-                
-                score_i, score_j = self.get_scores(
-                    architectures[i], architectures[j], randomizeHP=randomizeHP
-                )
-                if score_i > score_j:
-                    arch_scores[i] += 1
-                else:
-                    arch_scores[j] += 1
-                
-                n_fights += 1
-                if n_fights >= max_fights:
-                    break
-            if n_fights >= max_fights:
-                break
-
-        best_arch_index = arch_scores.index(max(arch_scores))
-        
-        if verbose:
-            print(f"Scores: {arch_scores}")
-            print(f"Winner: arch {best_arch_index} with {arch_scores[best_arch_index]} wins")
-        
-        return architectures[best_arch_index], arch_scores, best_arch_index
     
     def pareto_selection(self, n_rounds=8, n_archs=10, verbose=False, randomizeHP=True, simp_bal=None):
         if simp_bal is None:
@@ -605,7 +580,7 @@ class Arena:
         
         
 
-    def tune_simp_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
+    def OLD_tune_simp_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
         generator = Generator(generation_type=self.generation_type)
 
         def z_normalize(values):
@@ -678,6 +653,80 @@ class Arena:
         avg_simp_bal = sum(simp_bal_values) / len(simp_bal_values)
         std_simp_bal = math.sqrt(sum((v - avg_simp_bal) ** 2 for v in simp_bal_values) / len(simp_bal_values))
         return simp_bal_values , avg_simp_bal, std_simp_bal
+    
+    def OLD_tune_speed_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
+        generator = Generator(generation_type=self.generation_type)
+      
+        speed_bal_values = []
+        for round in range(n_rounds):
+            if use_MLPs:
+                dims = [[8], [16], [8,16], [16,32], [16,16,32],[16,32,64]]
+                architectures = [self.make_mlp(hidden_sizes=size) for size in dims]
+                while len(architectures) < n_archs:
+                    architectures.append(generator.generate(self.architecture_size))
+            n_pairs = n_archs * (n_archs - 1) // 2
+            learnability_scores = [0 for _ in range(n_archs)]
+            speed_scores = [0 for _ in range(n_archs)]
+            n_fight = 0
+            for i in range(n_archs):
+                for j in range(i + 1, n_archs):
+                    if verbose:
+                        print(f"fight n°{n_fight+1}/{n_pairs}: arch {i} vs {j}")
+                    n_fight +=1
+                    score_i, score_j, speed_i, speed_j = self.get_scores(
+                        architectures[i], architectures[j], randomizeHP=randomizeHP, get_delays=True
+                    )
+
+                    learnability_scores[i] += math.log((max(score_i,1e-10)))
+                    learnability_scores[j] += math.log((max(score_j,1e-10)))
+                    speed_scores[i] += math.log((1/max(speed_i,1e-10)))
+                    speed_scores[j] += math.log(1/(max(speed_j,1e-10)))
+                    if verbose:
+                        print(f"score_{i} : {score_i}, score_{j} : {score_j}")
+            learnability_scores = [score/(n_archs-1) for score in learnability_scores]
+            speed_scores = [score/(n_archs-1) for score in speed_scores]
+            norm_learn = [(learn-self.avg_learn)/self.std_learn for learn in learnability_scores]
+            norm_speed = [(speed-self.avg_speed)/self.std_speed for speed in speed_scores]
+            
+            # Now we find the speed_bal value that minmizes the distances between the occam_scores of the mlp
+            norm_learn_mlp = norm_learn[:len(dims)]
+            norm_speed_mlp = norm_speed[:len(dims)]
+
+
+            # Now we find the simp_bal value that minmizes the distances between the occam_scores of the mlp
+            norm_learn_mlp = norm_learn[:len(dims)]
+            norm_speed_mlp = norm_speed[:len(dims)]
+
+            print(f"norm_learn_mlp: {norm_learn_mlp}")
+            print(f"norm_speed_mlp: {norm_speed_mlp}")
+
+            mu_L = sum(norm_learn_mlp) / len(norm_learn_mlp)
+            mu_S = sum(norm_speed_mlp) / len(norm_speed_mlp)
+            
+            num = 0.0
+            den = 0.0
+            for L, S in zip(norm_learn_mlp, norm_speed_mlp):
+                delta_L = L - mu_L
+                delta_D = (S - mu_S) - (L - mu_L)
+                
+                num += delta_L * delta_D
+                den += delta_D * delta_D
+                
+            if den == 0:
+                best_speed_bal = 0.5 # Fallback if all scores are identical
+            else:
+                best_speed_bal = - (num / den)
+                
+            # Clip between 0 and 1 to keep it a valid percentage
+            best_speed_bal = max(0.0, min(1.0, best_speed_bal))
+            
+            if verbose:
+                print(f"Round {round} optimal speed_bal: {best_speed_bal:.4f}")
+            speed_bal_values.append(best_speed_bal)
+
+        avg_speed_bal = sum(speed_bal_values) / len(speed_bal_values)
+        std_speed_bal = math.sqrt(sum((v - avg_speed_bal) ** 2 for v in speed_bal_values) / len(speed_bal_values))
+        return speed_bal_values , avg_speed_bal, std_speed_bal
 
     def get_learnability_and_delays_data(self, n_tests=256, recent_size=16, verbose=False, randomizeHP=True, simp_bal=None):
         if simp_bal is None:
@@ -691,13 +740,21 @@ class Arena:
         recent_speed_stds = []
 
         # Prefill
-        arch_A = generator.generate(self.architecture_size)
-        arch_B = generator.generate(self.architecture_size)
-        score_A, score_B, delay_A, delay_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0, get_delays=True)
-        learnabilities.append(math.log(max(score_A, 1e-10)))
-        learnabilities.append(math.log(max(score_B, 1e-10)))
-        speeds.append(math.log(max(1.0 / max(delay_A, 1e-10), 1e-10)))
-        speeds.append(math.log(max(1.0 / max(delay_B, 1e-10), 1e-10)))
+        correct_generation = False
+        while correct_generation==False:
+            arch_A = generator.generate(self.architecture_size)
+            arch_B = generator.generate(self.architecture_size)
+            score_A, score_B, delay_A, delay_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0, get_delays=True)
+            if self._valid(score_A, score_B, delay_A, delay_B):
+                correct_generation = True
+            else:
+                if verbose:
+                    print(f"Scores are too low, trying again")
+                continue
+            learnabilities.append(math.log(max(score_A, 1e-10)))
+            learnabilities.append(math.log(max(score_B, 1e-10)))
+            speeds.append(math.log(max(1.0 / max(delay_A, 1e-10), 1e-10)))
+            speeds.append(math.log(max(1.0 / max(delay_B, 1e-10), 1e-10)))
 
         learn_means_std = 0
         learn_stds_std = 0
@@ -707,14 +764,21 @@ class Arena:
         for test in range(n_tests):
             if verbose:
                 print(f"Test {test+1}/{n_tests}")
-            arch_A = generator.generate(self.architecture_size)
-            arch_B = generator.generate(self.architecture_size)
-            score_A, score_B, delay_A, delay_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0, get_delays=True)
-
-            learnabilities.append(math.log(max(score_A, 1e-10)))
-            learnabilities.append(math.log(max(score_B, 1e-10)))
-            speeds.append(math.log(max(1.0 / max(delay_A, 1e-10), 1e-10)))
-            speeds.append(math.log(max(1.0 / max(delay_B, 1e-10), 1e-10)))
+            correct_generation = False
+            while correct_generation==False:
+                arch_A = generator.generate(self.architecture_size)
+                arch_B = generator.generate(self.architecture_size)
+                score_A, score_B, delay_A, delay_B = self.get_scores(arch_A, arch_B, randomizeHP=randomizeHP, pcp=0, get_delays=True)
+                if self._valid(score_A, score_B, delay_A, delay_B):
+                    correct_generation = True
+                else:
+                    if verbose:
+                        print(f"Scores are too low, trying again")
+                    continue
+                learnabilities.append(math.log(max(score_A, 1e-10)))
+                learnabilities.append(math.log(max(score_B, 1e-10)))
+                speeds.append(math.log(max(1.0 / max(delay_A, 1e-10), 1e-10)))
+                speeds.append(math.log(max(1.0 / max(delay_B, 1e-10), 1e-10)))
 
             # Learnability stats
             learn_mean = sum(learnabilities) / len(learnabilities)
