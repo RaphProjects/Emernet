@@ -120,8 +120,8 @@ def test_fight_viz():
     arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
     generator = Generator(generation_type="agnostic")
     arch_a = generator.generate(12)
-    arch_b = generator.generate(12)
-    #arch_b = arena.make_mlp([32,16,8])
+    #arch_b = generator.generate(12)
+    arch_b = arena.make_mlp([32,16,8])
 
     print("Running fight visualization...")
     result = run_fight_visualization(arch_a, arch_b, max_iter=500, lr=5e-3, n_snapshots=20)

@@ -177,7 +177,7 @@ class Executor(torch.nn.Module):
             
 
     def randomize_weights(self):
-        overall_gain = random.uniform(1.5,5)
+        overall_gain = 3
         for param in self.parameters():
             if param.dim() >= 2:
                 torch.nn.init.xavier_normal_(param,gain=overall_gain)
