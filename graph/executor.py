@@ -175,19 +175,14 @@ class Executor(torch.nn.Module):
                 adapted_output = self.output_adapter(best_output)
                 return [adapted_output]
             
-                        
-
-            
-
-            
-        
 
     def randomize_weights(self):
+        overall_gain = random.uniform(1.5,5)
         for param in self.parameters():
             if param.dim() >= 2:
-                torch.nn.init.xavier_normal_(param)
+                torch.nn.init.xavier_normal_(param,gain=overall_gain)
             else:
-                torch.nn.init.normal_(param, mean=0, std=0.01)
+                torch.nn.init.normal_(param, mean=0, std=overall_gain/100)
 
 
     def fit(self, input, target, verbose=False, lr=0.001, max_iter=600, batch_size=16, patience = 10, min_delta = 1e-7, device = None, cpu = False, max_retries = 3):

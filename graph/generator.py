@@ -19,6 +19,40 @@ class Generator:
         self.generation_type = generation_type
         self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
                                    Split, Pooling, Transpose,SoftMax, Shift, Accumulator, EMA]
+    
+    def _is_nonlinear(self, executor, shape=(15, 18), min_threshold=1e-5, max_threshold=1e9):
+        """
+        Tests if the architecture is functionally non-linear using the Midpoint Test.
+        """
+        # 1. Dummy forward pass to initialize lazy layers BEFORE randomizing!
+        dummy_input = torch.randn(1, *shape)
+        with torch.no_grad():
+            executor.forward(dummy_input)
+            
+        executor.randomize_weights()
+        
+        x1 = torch.randn(1, *shape)
+        x2 = torch.randn(1, *shape)
+        x_mid = (x1 + x2) / 2.0
+
+        # 2. Batch them for a single, fast forward pass
+        x_batch = torch.cat([x1, x2, x_mid], dim=0)
+        
+        with torch.no_grad():
+            out = executor.forward(x_batch)
+        
+        # 3. Extract the tensor from the list returned by Executor
+        out_tensor = out[0] 
+        
+        # Now we can safely index the batch dimension
+        expected_linear_mid = (out_tensor[0] + out_tensor[1]) / 2.0
+        actual_mid = out_tensor[2]
+        
+        # 4. Calculate the deviation from perfect linearity
+        deviation = torch.abs(actual_mid - expected_linear_mid).mean().item()
+        
+
+        return deviation > min_threshold and deviation < max_threshold
 
     def generate(self, n_nodes=12, randomize_n_nodes=True)->Architecture:
         generated = False
@@ -30,8 +64,14 @@ class Generator:
             while not generated and iters < 20:
                 try:
                     arch = self.generate_dense(n_nodes)
+                    if len(arch.nodes) < 3 or arch.parameter_count()<16:
+                        continue
                     test_input = torch.randn(2, 15, 18) # Sanity check
                     ex = Executor(arch)
+                    if not self._is_nonlinear(ex):
+                        continue
+
+                    test_input = torch.randn(2, 15, 18)
                     out = ex.forward(test_input)
                     if torch.isfinite(out[0]).all():
                         return arch
@@ -42,8 +82,12 @@ class Generator:
             while not generated:
                 try:
                     arch = self.generate_order_agnostic(n_nodes)
+                    if len(arch.nodes) < 3 or arch.parameter_count()<16:
+                        continue
                     test_input = torch.randn(2, 15, 18)
                     ex = Executor(arch)
+                    if not self._is_nonlinear(ex):
+                        continue
                     out = ex.forward(test_input)
                     if torch.isfinite(out[0]).all():
                         return arch
@@ -109,7 +153,7 @@ class Generator:
         # Always start with an input node
         self.architecture.add_node(0, Input())
         
-        rooting_p = random.choice([0.25, 0.3, 0.35, 0.40, 0.45, 0.5, 0.55, 0.6])
+        rooting_p = random.choice([0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.35, 0.4, 0.45])
         AvailableModules = self.available_modules
         for i in range(n_nodes):
             # Add a new node

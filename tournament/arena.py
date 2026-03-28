@@ -654,7 +654,7 @@ class Arena:
         std_simp_bal = math.sqrt(sum((v - avg_simp_bal) ** 2 for v in simp_bal_values) / len(simp_bal_values))
         return simp_bal_values , avg_simp_bal, std_simp_bal
     
-    def OLD_tune_speed_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
+    def tune_speed_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
         generator = Generator(generation_type=self.generation_type)
       
         speed_bal_values = []
@@ -676,7 +676,7 @@ class Arena:
                     score_i, score_j, speed_i, speed_j = self.get_scores(
                         architectures[i], architectures[j], randomizeHP=randomizeHP, get_delays=True
                     )
-
+            
                     learnability_scores[i] += math.log((max(score_i,1e-10)))
                     learnability_scores[j] += math.log((max(score_j,1e-10)))
                     speed_scores[i] += math.log((1/max(speed_i,1e-10)))
