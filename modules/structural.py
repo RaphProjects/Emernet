@@ -86,7 +86,7 @@ class Split(Module):
                 output_tensors.append(t)
                 output_tensors.append(t)
             else:
-                split_idx = int(dim_size * self.split_ratio)
+                split_idx = int(dim_size * self.fraction)
                 split_idx = max(1, min(dim_size - 1, split_idx)) # safety first
 
                 part1, part2 = torch.split(t, [split_idx, dim_size - split_idx], dim=self.dimension)

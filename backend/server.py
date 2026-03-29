@@ -5,11 +5,13 @@ from tournament.arena import Arena
 from graph.generator import Generator
 from graph.architecture import Architecture
 from backend.fight_viz import run_fight_visualization
+from backend.fight_viz import run_tournament_fight
 import glob
 import os
 import uuid
 import os
 import pickle
+import math
 
 app = FastAPI()
 
@@ -84,46 +86,154 @@ def generate_architecture():
     return {"arch_id": arch_id, "nodes": nodes, "edges": edges}
 
 
+
 @app.websocket("/ws/tournament")
 async def tournament_ws(websocket: WebSocket):
     await websocket.accept()
     data = await websocket.receive_json()
-    n_archs = data.get("n_archs", 8)
 
-    architectures = [generator.generate(12) for _ in range(n_archs)]
-    scores = [0.0] * n_archs
-    total = n_archs * (n_archs - 1) // 2
+    n_random     = data.get("n_random", 8)
+    loaded_files = data.get("loaded_archs", [])
+
+    # ── build architecture pool ──
+    architectures = []
+    arch_info     = []
+
+    for i in range(n_random):
+        arch    = generator.generate(12)
+        arch_id = str(uuid.uuid4())
+        session_archs[arch_id] = arch
+        architectures.append(arch)
+        arch_info.append({
+            "id": len(arch_info), "arch_id": arch_id,
+            "name": f"Random {i}", "source": "random",
+        })
+
+    for filename in loaded_files:
+        if os.path.exists(filename):
+            arch    = Architecture.load(filename)
+            arch_id = str(uuid.uuid4())
+            session_archs[arch_id] = arch
+            architectures.append(arch)
+            arch_info.append({
+                "id": len(arch_info), "arch_id": arch_id,
+                "name": filename.replace(".pkl", ""), "source": "loaded",
+            })
+
+    n_archs = len(architectures)
+    total   = n_archs * (n_archs - 1) // 2
+
+    await websocket.send_json({
+        "type": "init",
+        "architectures": arch_info,
+        "n_archs": n_archs,
+        "total_fights": total,
+    })
+
+    if n_archs < 2:
+        await websocket.send_json({"type": "done", "final_scores": []})
+        return
+
+    # ── accumulators (raw log-values, summed across fights) ──
+    raw_learn_sum = [0.0] * n_archs
+    raw_speed_sum = [0.0] * n_archs
+    raw_time_sum  = [0.0] * n_archs
+    fight_counts  = [0]   * n_archs
+
     fight = 0
 
     for i in range(n_archs):
         for j in range(i + 1, n_archs):
             fight += 1
+            failed = False
 
-            result = await asyncio.to_thread(
-                arena.get_scores,
-                architectures[i], architectures[j], pcp=0
-            )
+            try:
+                result = await asyncio.to_thread(
+                    arena.get_scores,
+                    architectures[i], architectures[j],
+                    randomizeHP=True, pcp=0, get_delays=True,
+                )
+                if result is None:
+                    raise ValueError("get_scores returned None")
+                score_i, score_j, delay_i, delay_j = result
+            except Exception as e:
+                print(f"Fight {i} vs {j} errored: {e}, using fallback scores")
+                score_i, score_j = 1e-5, 1e-5
+                delay_i, delay_j = 10.0, 10.0
+                failed = True
 
-            if result is None:
-                continue
+            # ── raw log values (same formula as occam_selection) ──
+            log_learn_i = math.log(max(score_i, 1e-10))
+            log_learn_j = math.log(max(score_j, 1e-10))
+            log_speed_i = math.log(max(1.0 / max(delay_i, 1e-6), 1e-10))
+            log_speed_j = math.log(max(1.0 / max(delay_j, 1e-6), 1e-10))
 
-            s_i, s_j = result
-            scores[i] += s_i
-            scores[j] += s_j
+            raw_learn_sum[i] += log_learn_i
+            raw_learn_sum[j] += log_learn_j
+            raw_speed_sum[i] += log_speed_i
+            raw_speed_sum[j] += log_speed_j
+            raw_time_sum[i]  += delay_i
+            raw_time_sum[j]  += delay_j
+            fight_counts[i]  += 1
+            fight_counts[j]  += 1
+
+            # ── current normalized metrics for ALL archs (leaderboard) ──
+            scores_arr = []
+            learns_arr = []
+            speeds_arr = []
+            times_arr  = []
+
+            for k in range(n_archs):
+                fc    = max(fight_counts[k], 1)
+                avg_l = raw_learn_sum[k] / fc
+                avg_s = raw_speed_sum[k] / fc
+                nl    = (avg_l - arena.avg_learn) / arena.std_learn
+                ns    = (avg_s - arena.avg_speed) / arena.std_speed
+                comb  = nl * (1.0 - arena.speed_bal) + ns * arena.speed_bal
+                learns_arr.append(nl)
+                speeds_arr.append(ns)
+                scores_arr.append(comb)
+                times_arr.append(raw_time_sum[k] / fc)
+
+            # ── per-fight normalized values (for fight log detail) ──
+            fl_i = (log_learn_i - arena.avg_learn) / arena.std_learn
+            fl_j = (log_learn_j - arena.avg_learn) / arena.std_learn
+            fs_i = (log_speed_i - arena.avg_speed) / arena.std_speed
+            fs_j = (log_speed_j - arena.avg_speed) / arena.std_speed
+            fc_i = fl_i * (1.0 - arena.speed_bal) + fs_i * arena.speed_bal
+            fc_j = fl_j * (1.0 - arena.speed_bal) + fs_j * arena.speed_bal
 
             await websocket.send_json({
                 "type": "fight_result",
-                "fight": fight,
-                "total": total,
+                "fight": fight, "total": total,
                 "i": i, "j": j,
-                "score_i": float(s_i),
-                "score_j": float(s_j),
-                "leaderboard": [float(s) for s in scores],
+                "failed":  failed,
+                "score_i": float(fc_i),  "score_j": float(fc_j),
+                "learn_i": float(fl_i),  "learn_j": float(fl_j),
+                "speed_i": float(fs_i),  "speed_j": float(fs_j),
+                "time_i":  float(delay_i), "time_j":  float(delay_j),
+                "loss_i":  float(1.0 / max(score_i ** 2, 1e-20)),
+                "loss_j":  float(1.0 / max(score_j ** 2, 1e-20)),
+                "scores":         [float(s) for s in scores_arr],
+                "learnabilities": [float(s) for s in learns_arr],
+                "speeds":         [float(s) for s in speeds_arr],
+                "fit_times":      [float(t) for t in times_arr],
+                "fight_counts":   fight_counts,
             })
+
+    # ── final ──
+    final_scores = []
+    for k in range(n_archs):
+        fc    = max(fight_counts[k], 1)
+        avg_l = raw_learn_sum[k] / fc
+        avg_s = raw_speed_sum[k] / fc
+        nl    = (avg_l - arena.avg_learn) / arena.std_learn
+        ns    = (avg_s - arena.avg_speed) / arena.std_speed
+        final_scores.append(nl * (1.0 - arena.speed_bal) + ns * arena.speed_bal)
 
     await websocket.send_json({
         "type": "done",
-        "final_scores": [float(s) for s in scores],
+        "final_scores": [float(s) for s in final_scores],
     })
 
 @app.get("/api/fight_viz")

@@ -5,6 +5,13 @@ import torch
 import torch.nn as nn
 import numpy as np
 import math
+import time
+
+avg_learn = 0.2401 # estimated over 340 runs, error +- 0.0043
+std_learn = 0.6251 # estimated over 340 runs, error +- 0.0067
+avg_speed = -1.8010 # estimated over 340 runs, error +- 0.0093
+std_speed = 1.2892 # estimated over 340 runs, error +- 0.0124
+speed_bal = 0.3
 
 def get_valid_target(arch, input_tensor, n_samples, device, max_attempts=5, generating=True):
     from graph.executor import Executor
@@ -124,7 +131,7 @@ def run_fight_visualization(
             snapshots = []
             loss_history = []
             nan_detected = False
-
+            start_time = time.time()
             for epoch in range(max_iter):
                 if epoch in snapshot_epochs:
                     executor.eval()
@@ -163,13 +170,23 @@ def run_fight_visualization(
                 opt.step()
                 loss_history.append(loss.item())
 
+            fit_time = time.time() - start_time
             if not nan_detected:
-                return snapshots, loss_history, False
+                final_loss = loss_history[-1] if loss_history else 1e10
 
+                learnability = math.log(math.sqrt(1.0 / max(final_loss, 1e-10)))
+                speed = math.log(math.sqrt(1.0 / max(fit_time, 1e-10)))
+
+                learnability = (learnability-avg_learn)/std_learn
+                speed = (speed-avg_speed)/std_speed
+
+                score = learnability*(1-speed_bal) + speed*speed_bal
+                return snapshots, loss_history, False, fit_time, score
+            
         return snapshots, loss_history, True
 
-    snapshots_a, loss_history_a, broken_a = train_one(exec_a_learner, target_b, pca_b)
-    snapshots_b, loss_history_b, broken_b = train_one(exec_b_learner, target_a, pca_a)
+    snapshots_a, loss_history_a, broken_a, time_a, score_a = train_one(exec_a_learner, target_b, pca_b)
+    snapshots_b, loss_history_b, broken_b, time_b, score_b = train_one(exec_b_learner, target_a, pca_a)
 
     return {
         "x": x.tolist(),
@@ -179,6 +196,8 @@ def run_fight_visualization(
             "snapshots": snapshots_a,
             "loss_history": loss_history_a,
             "broken": broken_a,
+            "fit_time": time_a,   
+            "score": score_a    
         },
         "fight_b": {
             "label": "B learning A",
@@ -186,5 +205,85 @@ def run_fight_visualization(
             "snapshots": snapshots_b,
             "loss_history": loss_history_b,
             "broken": broken_b,
+            "fit_time": time_b, 
+            "score": score_b  
         },
     }
+
+def run_tournament_fight(arch_a, arch_b, max_iter=500, lr=5e-3, max_retries=2):
+    """
+    Simplified fight for tournaments — no snapshots, no PCA.
+    Returns (details_a, details_b) dicts, or None on total failure.
+    """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    from graph.executor import Executor
+
+    n_samples = 200
+    x = torch.linspace(-3, 3, n_samples, device=device)
+    input_tensor = x.reshape(-1, 1, 1).to(device)
+
+    _, target_a, _ = get_valid_target(arch_a, input_tensor, n_samples, device)
+    _, target_b, _ = get_valid_target(arch_b, input_tensor, n_samples, device)
+
+    if target_a is None or target_b is None:
+        return None
+
+    def train_and_score(arch, target):
+        for attempt in range(max_retries):
+            try:
+                arch_copy = copy.deepcopy(arch)
+                arch_copy.reset_state()
+                ex = Executor(arch_copy).to(device)
+                ex.set_Output_Adapter(input_tensor, target.shape, force=True)
+                ex.randomize_weights()
+
+                loss_fn = nn.MSELoss()
+                opt = torch.optim.Adam(ex.parameters(), lr=lr)
+
+                start_time = time.time()
+                last_loss = 1e10
+                nan_hit = False
+
+                for _ in range(max_iter):
+                    ex.train()
+                    opt.zero_grad()
+                    pred = ex.forward(input_tensor)
+                    if not torch.isfinite(pred[0]).all():
+                        nan_hit = True; break
+                    loss = loss_fn(pred[0], target)
+                    if not torch.isfinite(loss):
+                        nan_hit = True; break
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(ex.parameters(), 1.0)
+                    opt.step()
+                    last_loss = loss.item()
+
+                if nan_hit:
+                    continue
+
+                fit_time = time.time() - start_time
+                learn = math.log(math.sqrt(1.0 / max(last_loss, 1e-10)))
+                spd   = math.log(math.sqrt(1.0 / max(fit_time, 1e-10)))
+                learn_z = (learn - avg_learn) / std_learn
+                spd_z   = (spd   - avg_speed) / std_speed
+                score   = learn_z * (1 - speed_bal) + spd_z * speed_bal
+
+                return {
+                    "score":        score,
+                    "learnability": learn_z,
+                    "speed":        spd_z,
+                    "fit_time":     fit_time,
+                    "final_loss":   last_loss,
+                }
+
+            except Exception as e:
+                print(f"  Tournament train attempt {attempt+1} failed: {e}")
+                continue
+        return None
+
+    ra = train_and_score(arch_a, target_b)
+    rb = train_and_score(arch_b, target_a)
+
+    if ra is None or rb is None:
+        return None
+    return (ra, rb)

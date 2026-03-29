@@ -1,270 +1,238 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
-import { useState, useMemo, useEffect } from 'react';
-import SaveArchButton from '../components/SaveArchButton'; // <-- Add this import
+import { useState, useEffect, useRef } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import SaveArchButton from '../components/SaveArchButton';
 
-interface Snapshot {
-  epoch: number;
-  loss: number | null;
-  y: number[];
-}
-
-interface FightSide {
-  label: string;
+interface LeaderboardEntry {
+  id: number;
   arch_id: string;
-  target: number[];
-  snapshots: Snapshot[];
-  loss_history: number[];
-  broken: boolean;
+  label: string;
+  score: number;
+  color: string;
 }
 
-interface FightData {
-  x: number[];
-  fight_a: FightSide;
-  fight_b: FightSide;
-}
-
-function formatChartData(xCoords: number[], fightSide: FightSide, snapshotIndex: number) {
-  if (!fightSide.snapshots || fightSide.snapshots.length === 0) return [];
-  const safeIdx = Math.min(snapshotIndex, fightSide.snapshots.length - 1);
-  const currentSnap = fightSide.snapshots[safeIdx];
-
-  return xCoords.map((xVal, i) => ({
-    x: Number(xVal.toFixed(2)),
-    target: fightSide.target[i],
-    pred: Math.max(-2.5, Math.min(2.5, currentSnap.y[i])),
-  }));
-}
-
-function FightChart({ title, fightSide, fightData, snapIdx }: {
-  title: string;
-  fightSide: FightSide;
-  fightData: FightData;
-  snapIdx: number;
-}) {
-  const currentLoss = fightSide.snapshots[snapIdx]?.loss;
-  const currentSnap = fightSide.snapshots[snapIdx];
-
-  const chartData = useMemo(
-    () => formatChartData(fightData.x, fightSide, snapIdx),
-    [fightData.x, fightSide, snapIdx]
-  );
-
-  // Debug: show first 3 pred values from the current snapshot
-  const debugPreds = currentSnap?.y?.slice(0, 3).map(v => v.toFixed(4)) || [];
-  const debugChart = chartData.slice(0, 3).map(d => d.pred.toFixed(4));
-
-  return (
-  <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-    
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-      
-      {/* Left side: Title and Loss */}
-      <div>
-        <h3 style={{ color: 'white', margin: 0, fontSize: '15px' }}>
-          {title}
-        </h3>
-        <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, marginTop: '4px' }}>
-          Loss: {currentLoss != null ? currentLoss.toFixed(4) : 'NaN'}
-        </p>
-      </div>
-
-      {/* Right side: Save Button */}
-      {/* We use replace(/\s+/g, '_') to turn "A learning B" into "A_learning_B" for the default filename */}
-      <SaveArchButton 
-        archId={fightSide.arch_id} 
-        defaultName={title.replace(/\s+/g, '_')} 
-      />
-      
-    </div>
-
-
-      {fightSide.broken ? (
-        <div style={{ color: '#ef4444', textAlign: 'center', marginTop: '80px', fontSize: '20px', fontWeight: 'bold' }}>
-          ARCH BROKEN (NaN)
-        </div>
-      ) : (
-        <div style={{ height: '320px' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={chartData}
-              margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis
-                dataKey="x"
-                stroke="#94a3b8"
-                tickFormatter={(v: number) => v.toFixed(1)}
-                interval={24}
-              />
-              <YAxis
-                stroke="#94a3b8"
-                domain={[-2, 2]}
-                ticks={[-2, -1, 0, 1, 2]}
-                tickFormatter={(v: number) => v.toFixed(1)}
-                allowDataOverflow={true}
-              />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', fontSize: '12px' }}
-              />
-              <Line type="monotone" name="Target" dataKey="target" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" name="Learner" dataKey="pred" stroke="#f97316" strokeWidth={2} dot={false} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function FightViewer() {
+export default function TournamentViewer() {
+  const [nRandom, setNRandom] = useState<number>(8);
   const [pklFiles, setPklFiles] = useState<string[]>([]);
-  const [archAFile, setArchAFile] = useState<string>("");
-  const [archBFile, setArchBFile] = useState<string>("");
-  const fetchFiles = async () => {
-    try {
-      const res = await fetch("http://127.0.0.1:8000/api/saved_archs");
-      if (res.ok) {
-        const data = await res.json();
-        setPklFiles(data.files || []);
-      }
-    } catch (err) {
-      console.error("Could not load pkl files", err);
-    }
-  };
+  const [selectedPkls, setSelectedPkls] = useState<string[]>([]);
+  
+  const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [log, setLog] = useState<string>("Waiting to start...");
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Fetch the list of saved architectures when the page loads
+  // Fetch available .pkl files on load
   useEffect(() => {
-    console.log("FightViewer mounted, fetching saved archs...");
-    fetchFiles();
+    fetch("http://127.0.0.1:8000/api/saved_archs")
+      .then(res => res.json())
+      .then(data => setPklFiles(data.files || []))
+      .catch(err => console.error("Could not load pkl files", err));
   }, []);
-  const [fightData, setFightData] = useState<FightData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [snapIdx, setSnapIdx] = useState<number>(0);
-  const [error, setError] = useState<string | null>(null);
 
-  const handleStartFight = async () => {
-    setIsLoading(true);
-    setFightData(null);
-    setError(null);
-    setSnapIdx(0);
-
-    try {
-      // Build the URL with query parameters
-      let url = 'http://127.0.0.1:8000/api/fight_viz?';
-      if (archAFile) url += `arch_a_file=${encodeURIComponent(archAFile)}&`;
-      if (archBFile) url += `arch_b_file=${encodeURIComponent(archBFile)}`;
-
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        const errData = await response.json();
-        setError(`Error: ${errData.detail || response.status}`);
-        return;
-      }
-      const data = await response.json();
-      setFightData(data);
-    } catch (err) {
-      setError('Could not reach the server');
-    } finally {
-      setIsLoading(false);
+  const togglePkl = (file: string) => {
+    if (selectedPkls.includes(file)) {
+      setSelectedPkls(selectedPkls.filter(f => f !== file));
+    } else {
+      setSelectedPkls([...selectedPkls, file]);
     }
   };
+
+  const startTournament = () => {
+    setStatus("running");
+    setLog("Generating architectures and preparing pool...");
+    setProgress({ current: 0, total: 0 });
+    setLeaderboard([]); // Clear until backend sends 'init'
+    
+    if (wsRef.current) wsRef.current.close();
+    
+    const ws = new WebSocket("ws://127.0.0.1:8000/ws/tournament");
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ n_random: nRandom, saved_archs: selectedPkls }));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === "init") {
+        // Backend responds with the generated pool (labels & UUIDs)
+        const initialBoard = data.archs.map((arch: any, i: number) => ({
+          id: arch.id,
+          arch_id: arch.arch_id,
+          label: arch.label,
+          score: 0,
+          color: `hsl(${(i * 360) / data.archs.length}, 70%, 60%)`
+        }));
+        setLeaderboard(initialBoard);
+        setLog("Tournament Pool Ready. Fighting...");
+      } 
+      else if (data.type === "fight_result") {
+        setProgress({ current: data.fight, total: data.total });
+        
+        setLeaderboard(prev => {
+          if (prev.length === 0) return prev;
+          const A = prev.find(p => p.id === data.i)?.label || data.i;
+          const B = prev.find(p => p.id === data.j)?.label || data.j;
+          setLog(`Round ${data.fight}: ${A} vs ${B}`);
+
+          const newBoard = prev.map(entry => ({
+            ...entry,
+            score: data.leaderboard[entry.id]
+          }));
+          return newBoard.sort((a, b) => b.score - a.score);
+        });
+      } 
+      else if (data.type === "done") {
+        setStatus("done");
+        setLog("Tournament Complete! 🏆");
+        ws.close();
+      }
+    };
+
+    ws.onerror = () => {
+      setStatus("error");
+      setLog("Connection error. Is the backend running?");
+    };
+
+    ws.onclose = () => {
+      if (status === "running") {
+        setStatus("error");
+        setLog("Connection closed unexpectedly.");
+      }
+    };
+  };
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
 
   return (
     <div className="page-content">
-        <div className="page-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '18px', color: '#f1f5f9', margin: 0 }}>
-          Fight Arena
-        </h2>
+      {/* TOOLBAR */}
+      <div className="page-toolbar" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         
-        <div style={{ width: '1px', height: '24px', background: '#334155' }} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+          <h2 style={{ fontSize: '18px', color: '#f1f5f9', margin: 0 }}>Round-Robin Tournament</h2>
+          <div style={{ width: '1px', height: '24px', background: '#334155' }} />
 
-        {/* Dropdown for Arch A */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Arch A:</span>
-          <select 
-            value={archAFile} 
-            onChange={(e) => setArchAFile(e.target.value)}
-            style={{ padding: '6px', borderRadius: '4px', background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px' }}
-          >
-            <option value="">🎲 Random Generated</option>
-            {pklFiles.map(f => <option key={f} value={f}>💾 {f}</option>)}
-          </select>
-        </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8' }}>Random Pool Size:</span>
+            <input 
+              type="number" 
+              min="0" 
+              max="32" 
+              value={nRandom} 
+              onChange={(e) => setNRandom(parseInt(e.target.value) || 0)}
+              disabled={status === "running"}
+              style={{ width: '60px', padding: '6px', borderRadius: '4px', background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px' }}
+            />
+          </div>
 
-        <span style={{ fontSize: '14px', color: '#475569', fontWeight: 'bold' }}>VS</span>
-
-        {/* Dropdown for Arch B */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Arch B:</span>
-          <select 
-            value={archBFile} 
-            onChange={(e) => setArchBFile(e.target.value)}
-            style={{ padding: '6px', borderRadius: '4px', background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px' }}
-          >
-            <option value="">🎲 Random Generated</option>
-            {pklFiles.map(f => <option key={f} value={f}>💾 {f}</option>)}
-          </select>
-          
-          {/* THE NEW REFRESH BUTTON */}
-          <button 
-            onClick={fetchFiles} 
-            title="Refresh list"
-            style={{ 
-              background: '#334155', border: '1px solid #475569', borderRadius: '4px', 
-              padding: '5px', marginLeft: '4px', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' 
-            }}
-          >
-            🔄
+          <button className="btn btn-primary" onClick={startTournament} disabled={status === "running" || (nRandom + selectedPkls.length < 2)}>
+            {status === "running" ? '⚔️ Tournament Running...' : '🏆 Start Tournament'}
           </button>
         </div>
 
-        <div style={{ width: '1px', height: '24px', background: '#334155' }} />
-
-        <button className="btn btn-primary" onClick={handleStartFight} disabled={isLoading}>
-          {isLoading ? 'Computing fight...' : '⚔️ Start Fight'}
-        </button>
-
-        {error && (
-          <span style={{ color: '#ef4444', fontSize: '13px' }}>
-            ⚠ {error}
-          </span>
+        {/* SAVED ARCHITECTURE INJECTOR */}
+        {pklFiles.length > 0 && (
+          <div style={{ backgroundColor: '#1e293b', padding: '10px 15px', borderRadius: '6px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '8px' }}>
+              Inject Saved Architectures ({selectedPkls.length} selected):
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+              {pklFiles.map(file => (
+                <label key={file} style={{ fontSize: '13px', color: 'white', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedPkls.includes(file)} 
+                    onChange={() => togglePkl(file)} 
+                    disabled={status === "running"}
+                  />
+                  💾 {file}
+                </label>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
-      <div className="graph-container" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-        {fightData && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', backgroundColor: '#1e293b', padding: '12px 20px', borderRadius: '8px', color: 'white' }}>
-            <label style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Epoch Snapshot</label>
-            <input
-              type="range"
-              min="0"
-              max={fightData.fight_a.snapshots.length - 1}
-              value={snapIdx}
-              onChange={(e) => setSnapIdx(Number(e.target.value))}
-              style={{ flex: 1, cursor: 'pointer' }}
+      <div className="graph-container" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        
+        {/* PROGRESS AREA */}
+        <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ color: status === 'error' ? '#ef4444' : '#e2e8f0', fontWeight: 'bold' }}>{log}</span>
+            <span style={{ color: '#94a3b8', fontSize: '14px' }}>{progress.current} / {progress.total} Fights</span>
+          </div>
+          
+          <div style={{ width: '100%', height: '10px', backgroundColor: '#0f172a', borderRadius: '5px', overflow: 'hidden' }}>
+            <div 
+              style={{ 
+                height: '100%', backgroundColor: status === 'done' ? '#10b981' : '#3b82f6', 
+                width: progress.total > 0 ? `${(progress.current / progress.total) * 100}%` : '0%',
+                transition: 'width 0.3s ease'
+              }} 
             />
-            <span style={{ fontWeight: 700, minWidth: '80px', textAlign: 'right' }}>
-              Epoch {fightData.fight_a.snapshots[snapIdx]?.epoch}
-            </span>
+          </div>
+        </div>
+
+        {/* CHART AREA */}
+        {leaderboard.length > 0 && (
+          <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px', height: '350px' }}>
+            <h3 style={{ margin: '0 0 16px 0', color: 'white', fontSize: '16px' }}>Live Leaderboard (Combined Final Score)</h3>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={leaderboard} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="label" stroke="#94a3b8" interval={0} angle={-30} textAnchor="end" height={60} />
+                <YAxis stroke="#94a3b8" tickFormatter={(v) => v.toFixed(1)} />
+                <Tooltip 
+                  cursor={{ fill: '#334155', opacity: 0.4 }}
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #475569', color: '#f1f5f9' }}
+                  formatter={(value: any) => [typeof value === 'number' ? value.toFixed(3) : value, 'Score']}
+                />
+                <Bar dataKey="score" isAnimationActive={false} radius={[4, 4, 0, 0]}>
+                  {leaderboard.map((entry) => (
+                    <Cell key={entry.id} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
 
-        {fightData && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <FightChart
-              title={fightData.fight_a.label}
-              fightSide={fightData.fight_a}
-              fightData={fightData}
-              snapIdx={snapIdx}
-            />
-            <FightChart
-              title={fightData.fight_b.label}
-              fightSide={fightData.fight_b}
-              fightData={fightData}
-              snapIdx={snapIdx}
-            />
+        {/* DETAILED LEADERBOARD & SAVE BUTTONS */}
+        {leaderboard.length > 0 && (
+          <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px' }}>
+            <h3 style={{ margin: '0 0 16px 0', color: 'white', fontSize: '16px' }}>Rankings</h3>
+            <table style={{ width: '100%', color: 'white', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left', color: '#94a3b8' }}>
+                  <th style={{ padding: '8px' }}>Rank</th>
+                  <th style={{ padding: '8px' }}>Architecture</th>
+                  <th style={{ padding: '8px' }}>Combined Score</th>
+                  <th style={{ padding: '8px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaderboard.map((entry, index) => (
+                  <tr key={entry.id} style={{ borderBottom: '1px solid #334155' }}>
+                    <td style={{ padding: '8px' }}>#{index + 1}</td>
+                    <td style={{ padding: '8px', color: entry.color, fontWeight: 'bold' }}>{entry.label}</td>
+                    <td style={{ padding: '8px' }}>{entry.score.toFixed(4)}</td>
+                    <td style={{ padding: '8px' }}>
+                      <SaveArchButton 
+                        archId={entry.arch_id} 
+                        defaultName={entry.label.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()} 
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
