@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ArchViewer from './pages/ArchViewer';
+import FightViewer from './pages/FightViewer';
 import '@xyflow/react/dist/style.css';
 import './App.css';
 
@@ -24,7 +25,7 @@ export default function App() {
       {page === 'menu' && <MainMenu onNavigate={setPage} />}
       {page === 'viewer' && <ArchViewer />}
       {page === 'saved' && <Placeholder title="Saved Architectures" />}
-      {page === 'fight' && <Placeholder title="Launch a Fight" />}
+      {page === 'fight' && <FightViewer />}
       {page === 'tournament' && <Placeholder title="Launch a Tournament" />}
     </div>
   );

@@ -43,10 +43,10 @@ class Arena:
         self.pcp = pcp # parameter complexity penalty exponent
         self.cpu = cpu
         self.simp_bal = 0 # simplicity didn't show any advantage
-        self.avg_learn = 0.5074 # estimated over 512 runs, error +- 0.0056
-        self.std_learn = 1.4965 # estimated over 512 runs, error +- 0.0024
-        self.avg_speed = -2.2863 # estimated over 512 runs, error +- 0.0115
-        self.std_speed = 1.4867 # estimated over 512 runs, error +- 0.0055
+        self.avg_learn = 0.2401 # estimated over 340 runs, error +- 0.0043
+        self.std_learn = 0.6251 # estimated over 340 runs, error +- 0.0067
+        self.avg_speed = -1.8010 # estimated over 340 runs, error +- 0.0093
+        self.std_speed = 1.2892 # estimated over 340 runs, error +- 0.0124
         self.speed_bal = speed_bal
 
     def OLD_calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
@@ -696,9 +696,10 @@ class Arena:
             # Now we find the simp_bal value that minmizes the distances between the occam_scores of the mlp
             norm_learn_mlp = norm_learn[:len(dims)]
             norm_speed_mlp = norm_speed[:len(dims)]
-
-            print(f"norm_learn_mlp: {norm_learn_mlp}")
-            print(f"norm_speed_mlp: {norm_speed_mlp}")
+            
+            if verbose:
+                print(f"norm_learn_mlp: {norm_learn_mlp}")
+                print(f"norm_speed_mlp: {norm_speed_mlp}")
 
             mu_L = sum(norm_learn_mlp) / len(norm_learn_mlp)
             mu_S = sum(norm_speed_mlp) / len(norm_speed_mlp)

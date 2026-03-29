@@ -6,7 +6,7 @@ import torch.nn as nn
 import numpy as np
 import math
 
-def get_valid_target(arch, input_tensor, n_samples, device, max_attempts=5):
+def get_valid_target(arch, input_tensor, n_samples, device, max_attempts=5, generating=True):
     from graph.executor import Executor
     import copy
 
@@ -32,7 +32,7 @@ def get_valid_target(arch, input_tensor, n_samples, device, max_attempts=5):
             continue
 
         variance = flat.var(axis=0).mean()
-        if variance < 1e-6:
+        if variance < 1e-6 and generating:
             print(f"  Target attempt {attempt+1}: flat (var={variance:.2e}), retrying...")
             continue
 
@@ -43,8 +43,8 @@ def get_valid_target(arch, input_tensor, n_samples, device, max_attempts=5):
 
 def run_fight_visualization(
     arch_a, arch_b,
-    n_samples=200, n_snapshots=20,
-    max_iter=300, lr=1e-3, max_retries=3
+    n_samples=200, n_snapshots=50,
+    max_iter=500, lr=1e-2, max_retries=3, generating_A=True, generating_B=True
     ):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     from graph.executor import Executor
@@ -53,9 +53,11 @@ def run_fight_visualization(
     x = torch.linspace(-3, 3, n_samples, device=device)
     input_tensor = x.reshape(-1, 1, 1).to(device)
 
+
     # Generate valid targets ──
-    _, target_a, flat_a = get_valid_target(arch_a, input_tensor, n_samples, device)
-    _, target_b, flat_b = get_valid_target(arch_b, input_tensor, n_samples, device)
+
+    _, target_a, flat_a = get_valid_target(arch_a, input_tensor, n_samples, device, generating=generating_A)
+    _, target_b, flat_b = get_valid_target(arch_b, input_tensor, n_samples, device, generating=generating_B)
 
     if target_a is None or target_b is None:
         raise RuntimeError("Could not generate valid (non-flat, finite) target functions.")
@@ -102,7 +104,7 @@ def run_fight_visualization(
         std = result.std()
         if std < 1e-8:
             return np.zeros(n_samples)
-        return (result - result.mean()) / std
+        return result
 
     snapshot_epochs = sorted(set(
         [0]
@@ -127,8 +129,15 @@ def run_fight_visualization(
                 if epoch in snapshot_epochs:
                     executor.eval()
                     pred_1d = project(executor, pca_target)
+
+                    if pred_1d is None: # Catch the NaN
+                        nan_detected = True
+                        break
                     with torch.no_grad():
                         loss_val = loss_fn(executor.forward(input_tensor)[0], target).item()
+
+                    # DEBUG PRINT: Print the first 3 values of pred_1d
+                    print(f"Snapshot epoch {epoch}, first 3 preds: {pred_1d[:3]}")
                     snapshots.append({
                         "epoch": int(epoch),
                         "loss": float(loss_val) if math.isfinite(loss_val) else None,
