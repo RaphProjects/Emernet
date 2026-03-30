@@ -5,6 +5,7 @@ interface SaveProps {
   defaultName?: string;
 }
 
+
 export default function SaveArchButton({ archId, defaultName = "my_arch" }: SaveProps) {
   const [filename, setFilename] = useState(defaultName);
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
@@ -16,9 +17,12 @@ export default function SaveArchButton({ archId, defaultName = "my_arch" }: Save
     
     try {
       {/* Send POST request with query parameters */}
-      const response = await fetch(`http://127.0.0.1:8000/api/save_arch?arch_id=${archId}&filename=${filename}`, {
-        method: 'POST'
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/save_arch?arch_id=${archId}&filename=${filename}`, 
+        {
+          method: 'POST'
+        }
+      );
       const data = await response.json();
       
       if (data.error) {

@@ -138,9 +138,9 @@ export default function FightViewer() {
     setFightData(null);
     setError(null);
     setSnapIdx(0);
-
     try {
-      let url = 'http://127.0.0.1:8000/api/fight_viz?';
+      console.log("Backend URL:", import.meta.env.VITE_API_BASE_URL);
+      let url = `${import.meta.env.VITE_API_BASE_URL}/api/fight_viz?`;
       if (archAFile) url += `arch_a_file=${encodeURIComponent(archAFile)}&`;
       if (archBFile) url += `arch_b_file=${encodeURIComponent(archBFile)}`;
 

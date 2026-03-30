@@ -121,7 +121,7 @@ export default function TournamentViewer() {
     setProgress({ current: 0, total: expectedFights });
 
     wsRef.current?.close();
-    const ws = new WebSocket('ws://127.0.0.1:8000/ws/tournament');
+    const ws = new WebSocket(`${import.meta.env.VITE_WS_BASE_URL}/ws/tournament`);
     wsRef.current = ws;
 
     ws.onopen = () => {
