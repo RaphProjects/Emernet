@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import SaveArchButton from '../components/SaveArchButton';
 
-/* ── types ─────────────────────────────────── */
+// types
 
 interface ArchInit {
   id: number;
@@ -43,21 +43,21 @@ interface FightLogEntry {
 type ChartMetric = 'score' | 'learnability' | 'speed';
 
 const metricLabels: Record<ChartMetric, string> = {
-  score:        '🏆 Combined',
-  learnability: '🧠 Learnability',
-  speed:        '⚡ Speed',
+  score:        'Combined',
+  learnability: 'Learnability',
+  speed:        'Speed',
 };
 
-/* ── component ─────────────────────────────── */
+// component
 
 export default function TournamentViewer() {
-  /* pool config */
+  // pool config
   const [nRandom, setNRandom]             = useState(6);
   const [pklFiles, setPklFiles]           = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [dropdownValue, setDropdownValue] = useState('');
 
-  /* tournament state */
+  // tournament state
   const [status, setStatus]           = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [progress, setProgress]       = useState({ current: 0, total: 0 });
   const [log, setLog]                 = useState('Configure your pool and start the tournament.');
@@ -67,7 +67,7 @@ export default function TournamentViewer() {
   const [chartMetric, setChartMetric] = useState<ChartMetric>('score');
   const [expandedFight, setExpandedFight] = useState<number | null>(null);
 
-  /* refs */
+  // refs
   const wsRef       = useRef<WebSocket | null>(null);
   const statusRef   = useRef(status);
   const archInfoRef = useRef<ArchInit[]>([]);
@@ -76,7 +76,7 @@ export default function TournamentViewer() {
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [fightLog]);
 
-  /* ── fetch saved files ── */
+  // fetch saved files
   const fetchFiles = async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/saved_archs');
@@ -85,7 +85,7 @@ export default function TournamentViewer() {
   };
   useEffect(() => { fetchFiles(); }, []);
 
-  /* ── pool helpers ── */
+  // pool helpers
   const addFile = () => {
     if (dropdownValue && !selectedFiles.includes(dropdownValue)) {
       setSelectedFiles(prev => [...prev, dropdownValue]);
@@ -97,7 +97,7 @@ export default function TournamentViewer() {
   const expectedPool   = nRandom + selectedFiles.length;
   const expectedFights = (expectedPool * (expectedPool - 1)) / 2;
 
-  /* ── reset ── */
+  // reset
   const resetToIdle = () => {
     setStatus('idle');
     setLeaderboard([]);
@@ -109,12 +109,12 @@ export default function TournamentViewer() {
     setLog('Configure your pool and start the tournament.');
   };
 
-  /* ── start tournament ── */
+  // start tournament
   const startTournament = () => {
     if (expectedPool < 2) return;
 
     setStatus('running');
-    setLog('Generating architectures…');
+    setLog('Generating architectures (takes ~10 seconds per architecture)…');
     setFightLog([]);
     setLeaderboard([]);
     setExpandedFight(null);
@@ -142,7 +142,7 @@ export default function TournamentViewer() {
             color: `hsl(${(i * 360) / data.n_archs}, 70%, 60%)`,
           })),
         );
-        setLog('Tournament started — fights in progress…');
+        setLog('Tournament started — fights in progress (takes ~50 seconds per fight)…');
       }
 
       else if (data.type === 'fight_result') {
@@ -154,7 +154,7 @@ export default function TournamentViewer() {
 
         setLog(
           data.failed
-            ? `Fight ${data.fight}/${data.total}: ${nameI} vs ${nameJ} ⚠️ fallback`
+            ? `Fight ${data.fight}/${data.total}: ${nameI} vs ${nameJ} fallback`
             : `Fight ${data.fight}/${data.total}: ${nameI} vs ${nameJ}`,
         );
 
@@ -171,7 +171,7 @@ export default function TournamentViewer() {
         setLeaderboard(prev =>
           prev.map(e => ({
             ...e,
-            score:        data.scores[e.id],
+            score:         data.scores[e.id],
             learnability: data.learnabilities[e.id],
             speed:        data.speeds[e.id],
             fit_time:     data.fit_times[e.id],
@@ -183,7 +183,7 @@ export default function TournamentViewer() {
       else if (data.type === 'done') {
         statusRef.current = 'done';
         setStatus('done');
-        setLog('Tournament Complete! 🏆');
+        setLog('Tournament Complete!');
         ws.close();
       }
     };
@@ -196,20 +196,20 @@ export default function TournamentViewer() {
 
   useEffect(() => () => { wsRef.current?.close(); }, []);
 
-  /* ── derived ── */
+  // derived
   const pct    = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
   const winner = status === 'done' && leaderboard.length > 0 ? leaderboard[0] : null;
 
-  /* chart data sorted by selected metric */
+  // chart data sorted by selected metric
   const chartData = [...leaderboard].sort((a, b) => b[chartMetric] - a[chartMetric]);
 
-  /* ── render ──────────────────────────────── */
+  // render
   return (
     <div className="page-content">
 
-      {/* ═══ TOOLBAR ═══ */}
+      {/* toolbar */}
       <div className="page-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '18px', color: '#f1f5f9', margin: 0 }}>🏆 Tournament Arena</h2>
+        <h2 style={{ fontSize: '18px', color: '#f1f5f9', margin: 0 }}>Tournament Arena</h2>
         <div style={{ width: '1px', height: '24px', background: '#334155' }} />
         <button
           className="btn btn-primary"
@@ -217,11 +217,11 @@ export default function TournamentViewer() {
           disabled={status === 'running' || expectedPool < 2}
         >
           {status === 'running'
-            ? '⏳ Running…'
-            : `🏆 Start (${expectedPool} archs → ${expectedFights} fights)`}
+            ? 'Running…'
+            : `Start (${expectedPool} archs -> ${expectedFights} fights)`}
         </button>
         {(status === 'done' || status === 'error') && (
-          <button className="btn btn-back" onClick={resetToIdle}>🔄 New Tournament</button>
+          <button className="btn btn-back" onClick={resetToIdle}>New Tournament</button>
         )}
         {expectedPool < 2 && status === 'idle' && (
           <span style={{ color: '#f59e0b', fontSize: '12px' }}>Need at least 2 architectures</span>
@@ -230,10 +230,10 @@ export default function TournamentViewer() {
 
       <div className="graph-container" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-        {/* ═══ POOL CONFIGURATION ═══ */}
+        {/* pool configuration */}
         {status === 'idle' && (
           <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '8px' }}>
-            <h3 style={{ color: 'white', margin: '0 0 16px 0', fontSize: '15px' }}>⚙️ Pool Configuration</h3>
+            <h3 style={{ color: 'white', margin: '0 0 16px 0', fontSize: '15px' }}>Pool Configuration</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <label style={{ color: '#94a3b8', fontSize: '13px', minWidth: '160px' }}>Random Architectures:</label>
@@ -274,7 +274,7 @@ export default function TournamentViewer() {
                       background: '#334155', border: '1px solid #475569', borderRadius: '4px',
                       padding: '5px 8px', cursor: 'pointer', color: 'white', fontSize: '13px',
                     }}
-                  >🔄</button>
+                  >Refresh</button>
                 </div>
                 {selectedFiles.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginLeft: '172px' }}>
@@ -284,7 +284,7 @@ export default function TournamentViewer() {
                         padding: '4px 10px', borderRadius: '12px',
                         backgroundColor: '#334155', color: '#e2e8f0', fontSize: '12px',
                       }}>
-                        💾 {file}
+                        {file}
                         <button onClick={() => removeFile(file)}
                           style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: 0, lineHeight: 1 }}
                         >×</button>
@@ -309,7 +309,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* ═══ PROGRESS BAR ═══ */}
+        {/* progress bar */}
         {status !== 'idle' && (
           <div style={{ backgroundColor: '#1e293b', padding: '16px 20px', borderRadius: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
@@ -327,7 +327,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* ═══ WINNER BANNER ═══ */}
+        {/* winner banner */}
         {winner && (() => {
           const fc = Math.max(winner.fight_count, 1);
           return (
@@ -335,29 +335,28 @@ export default function TournamentViewer() {
               background: 'linear-gradient(135deg, #78350f 0%, #92400e 50%, #78350f 100%)',
               border: '2px solid #fbbf24', borderRadius: '8px', padding: '20px', textAlign: 'center',
             }}>
-              <div style={{ fontSize: '36px' }}>🏆</div>
               <h3 style={{ color: '#fbbf24', margin: '4px 0', fontSize: '20px' }}>
                 Winner: {winner.name}
                 {winner.source === 'loaded' && <span style={{ fontSize: '14px', color: '#fde68a' }}> (saved)</span>}
               </h3>
               <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '8px', fontSize: '13px', color: '#fde68a' }}>
                 <span>Score: <strong>{winner.score.toFixed(3)}</strong></span>
-                <span>🧠 Learn: <strong>{winner.learnability.toFixed(3)}</strong></span>
-                <span>⚡ Speed: <strong>{winner.speed.toFixed(3)}</strong></span>
-                <span>⏱ Avg Time: <strong>{(winner.fit_time / fc).toFixed(2)}s</strong></span>
+                <span>Learn: <strong>{winner.learnability.toFixed(3)}</strong></span>
+                <span>Speed: <strong>{winner.speed.toFixed(3)}</strong></span>
+                <span>Avg Time: <strong>{(winner.fit_time / fc).toFixed(2)}s</strong></span>
               </div>
             </div>
           );
         })()}
 
-        {/* ═══ LEADERBOARD + FIGHT LOG ═══ */}
+        {/* leaderboard + fight log */}
         {leaderboard.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
 
-            {/* ── leaderboard chart ── */}
+            {/* leaderboard chart */}
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <h3 style={{ color: 'white', margin: 0, fontSize: '15px' }}>📊 Live Leaderboard</h3>
+                <h3 style={{ color: 'white', margin: 0, fontSize: '15px' }}>Live Leaderboard</h3>
                 <div style={{ display: 'flex', gap: '4px' }}>
                   {(Object.keys(metricLabels) as ChartMetric[]).map(m => (
                     <button
@@ -397,9 +396,9 @@ export default function TournamentViewer() {
               </div>
             </div>
 
-            {/* ── fight log ── */}
+            {/* fight log */}
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column' }}>
-              <h3 style={{ color: 'white', margin: '0 0 12px 0', fontSize: '15px' }}>📜 Fight Log</h3>
+              <h3 style={{ color: 'white', margin: '0 0 12px 0', fontSize: '15px' }}>Fight Log</h3>
               <div style={{
                 flex: 1, overflowY: 'auto', maxHeight: Math.max(250, leaderboard.length * 38 - 30),
                 fontSize: '12px', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '1px',
@@ -424,7 +423,7 @@ export default function TournamentViewer() {
                         }}
                       >
                         <span style={{ color: '#64748b', minWidth: '36px' }}>#{f.fight}</span>
-                        {f.failed && <span title="Used fallback scores">⚠️</span>}
+                        {f.failed && <span title="Used fallback scores">!</span>}
                         <span style={{ color: iWins ? '#10b981' : '#94a3b8', fontWeight: iWins ? 700 : 400 }}>
                           {nameI} ({f.score_i.toFixed(2)})
                         </span>
@@ -433,7 +432,7 @@ export default function TournamentViewer() {
                           {nameJ} ({f.score_j.toFixed(2)})
                         </span>
                         <span style={{ color: '#475569', marginLeft: 'auto', fontSize: '10px' }}>
-                          {isExpanded ? '▲' : '▼'}
+                          {isExpanded ? '^' : 'v'}
                         </span>
                       </div>
 
@@ -466,10 +465,10 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* ═══ FINAL STANDINGS TABLE ═══ */}
+        {/* final standings table */}
         {status === 'done' && leaderboard.length > 0 && (
           <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px' }}>
-            <h3 style={{ color: 'white', margin: '0 0 12px 0', fontSize: '15px' }}>🏅 Final Standings</h3>
+            <h3 style={{ color: 'white', margin: '0 0 12px 0', fontSize: '15px' }}>Final Standings</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '750px' }}>
                 <thead>
@@ -478,9 +477,9 @@ export default function TournamentViewer() {
                     <th style={{ textAlign: 'left',  padding: '8px' }}>Architecture</th>
                     <th style={{ textAlign: 'left',  padding: '8px' }}>Source</th>
                     <th style={{ textAlign: 'right', padding: '8px' }}>Score</th>
-                    <th style={{ textAlign: 'right', padding: '8px' }}>🧠 Learn</th>
-                    <th style={{ textAlign: 'right', padding: '8px' }}>⚡ Speed</th>
-                    <th style={{ textAlign: 'right', padding: '8px' }}>⏱ Avg Time</th>
+                    <th style={{ textAlign: 'right', padding: '8px' }}>Learn</th>
+                    <th style={{ textAlign: 'right', padding: '8px' }}>Speed</th>
+                    <th style={{ textAlign: 'right', padding: '8px' }}>Avg Time</th>
                     <th style={{ textAlign: 'right', padding: '8px' }}>Fights</th>
                     <th style={{ textAlign: 'right', padding: '8px' }}>Save</th>
                   </tr>
@@ -494,7 +493,7 @@ export default function TournamentViewer() {
                         backgroundColor: rank === 0 ? 'rgba(251,191,36,0.08)' : 'transparent',
                       }}>
                         <td style={{ padding: '8px', color: '#94a3b8' }}>
-                          {rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : `#${rank + 1}`}
+                          {'#' + (rank + 1)}
                         </td>
                         <td style={{ padding: '8px', color: 'white' }}>
                           <span style={{
@@ -504,7 +503,7 @@ export default function TournamentViewer() {
                           {entry.name}
                         </td>
                         <td style={{ padding: '8px', color: '#94a3b8', fontSize: '12px' }}>
-                          {entry.source === 'loaded' ? '💾 Saved' : '🎲 Random'}
+                          {entry.source === 'loaded' ? 'Saved' : 'Random'}
                         </td>
                         <td style={{ padding: '8px', textAlign: 'right', color: 'white', fontWeight: 600 }}>
                           {entry.score.toFixed(3)}
@@ -536,13 +535,12 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* ═══ IDLE PLACEHOLDER ═══ */}
+        {/* idle placeholder */}
         {status === 'idle' && (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             height: '180px', color: '#475569', gap: '8px',
           }}>
-            <span style={{ fontSize: '48px' }}>🏟️</span>
             <p style={{ fontSize: '14px', margin: 0 }}>Configure your pool above, then hit <strong>Start</strong>.</p>
           </div>
         )}

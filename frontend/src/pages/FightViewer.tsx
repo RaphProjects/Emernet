@@ -62,7 +62,7 @@ function FightChart({ title, fightSide, fightData, snapIdx, isWinner }: {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
         <div>
           <h3 style={{ color: isWinner ? '#fbbf24' : 'white', margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {isWinner && <span>🏆</span>} {title}
+            {isWinner && <span>Winner: </span>} {title}
           </h3>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', columnGap: '12px', marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
@@ -79,7 +79,7 @@ function FightChart({ title, fightSide, fightData, snapIdx, isWinner }: {
               color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' 
             }}
           >
-            {autoScaleY ? '↕ Free Y-Axis' : '🔒 Locked Y-Axis'}
+            {autoScaleY ? 'Free Y-Axis' : 'Locked Y-Axis'}
           </button>
         </div>
 
@@ -172,8 +172,8 @@ export default function FightViewer() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '13px', color: '#94a3b8' }}>Arch A:</span>
           <select value={archAFile} onChange={(e) => setArchAFile(e.target.value)} style={{ padding: '6px', borderRadius: '4px', background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px' }}>
-            <option value="">🎲 Random Generated</option>
-            {pklFiles.map(f => <option key={f} value={f}>💾 {f}</option>)}
+            <option value="">Random Generated</option>
+            {pklFiles.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         </div>
 
@@ -182,22 +182,22 @@ export default function FightViewer() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '13px', color: '#94a3b8' }}>Arch B:</span>
           <select value={archBFile} onChange={(e) => setArchBFile(e.target.value)} style={{ padding: '6px', borderRadius: '4px', background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px' }}>
-            <option value="">🎲 Random Generated</option>
-            {pklFiles.map(f => <option key={f} value={f}>💾 {f}</option>)}
+            <option value="">Random Generated</option>
+            {pklFiles.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
           
-          <button onClick={fetchFiles} title="Refresh list" style={{ background: '#334155', border: '1px solid #475569', borderRadius: '4px', padding: '5px', marginLeft: '4px', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            🔄
+          <button onClick={fetchFiles} title="Refresh list" style={{ background: '#334155', border: '1px solid #475569', borderRadius: '4px', padding: '5px 10px', marginLeft: '4px', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            Refresh
           </button>
         </div>
 
         <div style={{ width: '1px', height: '24px', background: '#334155' }} />
 
         <button className="btn btn-primary" onClick={handleStartFight} disabled={isLoading}>
-          {isLoading ? 'Computing fight...' : '⚔️ Start Fight'}
+          {isLoading ? 'Computing fight (takes 30-60s)...' : 'Start Fight'}
         </button>
 
-        {error && <span style={{ color: '#ef4444', fontSize: '13px' }}>⚠ {error}</span>}
+        {error && <span style={{ color: '#ef4444', fontSize: '13px' }}>Error: {error}</span>}
       </div>
 
       <div className="graph-container" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>

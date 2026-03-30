@@ -43,10 +43,10 @@ class Arena:
         self.pcp = pcp # parameter complexity penalty exponent
         self.cpu = cpu
         self.simp_bal = 0 # simplicity didn't show any advantage
-        self.avg_learn = 0.2401 # estimated over 340 runs, error +- 0.0043
-        self.std_learn = 0.6251 # estimated over 340 runs, error +- 0.0067
-        self.avg_speed = -1.8010 # estimated over 340 runs, error +- 0.0093
-        self.std_speed = 1.2892 # estimated over 340 runs, error +- 0.0124
+        self.avg_learn = 0.2197 # estimated over 340 runs, error +- 0.0043
+        self.std_learn = 0.7371 # estimated over 340 runs, error +- 0.0067
+        self.avg_speed = -1.8779 # estimated over 340 runs, error +- 0.0093
+        self.std_speed = 1.3691 # estimated over 340 runs, error +- 0.0124
         self.speed_bal = speed_bal
 
     def OLD_calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,

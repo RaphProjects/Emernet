@@ -15,7 +15,7 @@ export default function SaveArchButton({ archId, defaultName = "my_arch" }: Save
     setStatus("saving");
     
     try {
-      // Send POST request with query parameters
+      {/* Send POST request with query parameters */}
       const response = await fetch(`http://127.0.0.1:8000/api/save_arch?arch_id=${archId}&filename=${filename}`, {
         method: 'POST'
       });
@@ -27,7 +27,8 @@ export default function SaveArchButton({ archId, defaultName = "my_arch" }: Save
       } else {
         setStatus("success");
         setMessage(data.message);
-        setTimeout(() => setStatus("idle"), 3000); // Reset after 3 seconds
+        {/* Reset after 3 seconds */}
+        setTimeout(() => setStatus("idle"), 3000); 
       }
     } catch (err) {
       setStatus("error");
@@ -50,11 +51,11 @@ export default function SaveArchButton({ archId, defaultName = "my_arch" }: Save
         onClick={handleSave}
         disabled={status === "saving"}
       >
-        {status === "saving" ? "⏳" : "💾 Save"}
+        {status === "saving" ? "Saving..." : "Save"}
       </button>
       
-      {status === "success" && <span style={{ color: '#10b981', fontSize: '12px' }}>✓ {message}</span>}
-      {status === "error" && <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ {message}</span>}
+      {status === "success" && <span style={{ color: '#10b981', fontSize: '12px' }}>Done: {message}</span>}
+      {status === "error" && <span style={{ color: '#ef4444', fontSize: '12px' }}>Error: {message}</span>}
     </div>
   );
 }

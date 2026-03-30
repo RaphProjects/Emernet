@@ -76,17 +76,20 @@ export default function ArchViewer() {
     setEdges(formattedEdges);
   };
 
-// 1. Fetch random architecture
-const generateArch = useCallback(async () => {
+  // Fetch random architecture
+  const generateArch = useCallback(async () => {
     setLoading(true);
     setError(null);
     setSelectedFile('');
     try {
       const res = await fetch('http://127.0.0.1:8000/api/generate');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();       // Parse JSON first
-      setCurrentArchId(data.arch_id);      // Then read from parsed data
-      formatGraphData(data);               // Then format the graph
+      const data = await res.json();
+      // Parse JSON first
+      setCurrentArchId(data.arch_id); 
+      // Then read from parsed data
+      formatGraphData(data); 
+      // Then format the graph
     } catch (err: any) {
       setError('Backend not reachable. Is the server running?');
     } finally {
@@ -94,7 +97,7 @@ const generateArch = useCallback(async () => {
     }
   }, []);
 
-  // 2. Fetch specific saved architecture
+  // Fetch specific saved architecture
   const loadArch = async (filename: string) => {
     if (!filename) return;
     setLoading(true);
@@ -114,7 +117,7 @@ const generateArch = useCallback(async () => {
     }
   };
 
-  // 3. Get the list of .pkl files
+  // Get the list of .pkl files
   const fetchFileList = async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/saved_archs');
@@ -139,7 +142,7 @@ const generateArch = useCallback(async () => {
           {loading && !selectedFile ? 'Generating...' : 'Generate Random'}
         </button>
 
-        {/* Add the Save Button here! */}
+        {/* Add the Save Button here */}
         {currentArchId && (
           <>
             <div style={{ width: '1px', height: '24px', background: '#334155', margin: '0 8px' }} />
@@ -157,20 +160,24 @@ const generateArch = useCallback(async () => {
               padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', outline: 'none'
             }}
           >
-            <option value="">-- Load Saved Arch --</option>
+            <option value="">Load Saved Arch</option>
             {savedFiles.map(file => (
               <option key={file} value={file}>{file}</option>
             ))}
           </select>
-          <button className="btn btn-back" onClick={fetchFileList} title="Refresh File List">
-            🔄
+          <button className="btn btn-back" onClick={fetchFileList} title="Refresh File List" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
           </button>
         </div>
 
         {nodes.length > 0 && (
           <span className="toolbar-info" style={{ marginLeft: 'auto' }}>
             {selectedFile ? `Loaded: ${selectedFile} ` : ''} 
-            ({nodes.length} nodes · {edges.length} edges)
+            (Nodes: {nodes.length} | Edges: {edges.length})
           </span>
         )}
 

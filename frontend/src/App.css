@@ -101,7 +101,18 @@ body {
   grid-template-columns: repeat(2, 280px);
   gap: 16px;
 }
+.menu-grid.two-cols {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 800px;
+  margin: 0 auto;
+}
 
+/* Ensure responsiveness on smaller screens */
+@media (max-width: 768px) {
+  .menu-grid.two-cols {
+    grid-template-columns: 1fr;
+  }
+}
 .menu-card {
   display: flex;
   flex-direction: column;
@@ -229,4 +240,37 @@ body {
 
 .placeholder p {
   color: #475569;
+}
+/* ── Three-column menu grid ── */
+.menu-grid.three-cols {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 900px;
+}
+
+/* ── Footer ── */
+.menu-footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid #334155;
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+}
+
+.menu-footer a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.menu-footer a:hover {
+  text-decoration: underline;
+  color: #60a5fa;
+}
+
+.menu-container {
+  padding-top: 40px;
+}
+
+.menu-title {
+  margin-top: 12px;
 }

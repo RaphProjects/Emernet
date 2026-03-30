@@ -7,10 +7,10 @@ import numpy as np
 import math
 import time
 
-avg_learn = 0.2401 # estimated over 340 runs, error +- 0.0043
-std_learn = 0.6251 # estimated over 340 runs, error +- 0.0067
-avg_speed = -1.8010 # estimated over 340 runs, error +- 0.0093
-std_speed = 1.2892 # estimated over 340 runs, error +- 0.0124
+avg_learn = 0.2197 # estimated over 340 runs, error +- 0.0043
+std_learn = 0.7371 # estimated over 340 runs, error +- 0.0067
+avg_speed = -1.8779 # estimated over 340 runs, error +- 0.0093
+std_speed = 1.3691 # estimated over 340 runs, error +- 0.0124
 speed_bal = 0.3
 
 def get_valid_target(arch, input_tensor, n_samples, device, max_attempts=5, generating=True):
