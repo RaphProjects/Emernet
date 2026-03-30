@@ -79,7 +79,11 @@ export default function TournamentViewer() {
   // fetch saved files
   const fetchFiles = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/saved_archs');
+            // Grab the URL and cleanly slice off any invisible spaces
+      const baseUrl = import.meta.env.VITE_API_BASE_URL.trim();
+
+      // Use backticks to inject it into the fetch call
+      const res = await fetch(`${baseUrl}/api/saved_archs`);
       if (res.ok) { const d = await res.json(); setPklFiles(d.files || []); }
     } catch (e) { console.error('Could not load pkl files', e); }
   };
