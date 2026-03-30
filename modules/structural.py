@@ -91,8 +91,8 @@ class Split(Module):
 
                 part1, part2 = torch.split(t, [split_idx, dim_size - split_idx], dim=self.dimension)
 
-                output_tensors.append(part1)
-                output_tensors.append(part2)
+                output_tensors.append(part1.clone())
+                output_tensors.append(part2.clone())
 
 
 

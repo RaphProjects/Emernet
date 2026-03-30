@@ -236,8 +236,8 @@ class Arena:
         output_1 = (executors[0].forward(input))[0]
         output_2 = (executors[1].forward(input))[0]
 
-        output_1 += torch.randn_like(output_1)*output_noise
-        output_2 += torch.randn_like(output_2)*output_noise
+        output_1 = output_1 + torch.randn_like(output_1) * output_noise
+        output_2 = output_2 + torch.randn_like(output_2) * output_noise
 
         # Standardize the targets so amplitude/flatness gives no advantage
         std_1, mean_1 = torch.std_mean(output_1, dim=0, keepdim=True)
