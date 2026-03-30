@@ -20,11 +20,11 @@ Two architectures are initialized with random weights. Each one produces a targe
 
 ## Tech Stack
 
-**Frontend** — React, TypeScript, Vite, React Flow, Recharts
+**Frontend** : React, TypeScript, Vite, React Flow, Recharts
 
-**Backend** — FastAPI, PyTorch, NetworkX, scikit-learn
+**Backend** : FastAPI, PyTorch, NetworkX, scikit-learn
 
-**Communication** — REST API, WebSocket (live tournament updates)
+**Communication** : REST API, WebSocket (live tournament updates)
 
 ## Features
 
