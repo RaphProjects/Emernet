@@ -3,9 +3,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, LabelList,
 } from 'recharts';
-import SaveArchButton from '../components/SaveArchButton';
 
-// types
+const API = import.meta.env.VITE_API_BASE_URL;
+
+// ── types ──
 
 interface ArchInit {
   id: number;
@@ -40,6 +41,11 @@ interface FightLogEntry {
   loss_j: number;
 }
 
+interface UploadedArch {
+  arch_id: string;
+  filename: string;
+}
+
 type ChartMetric = 'score' | 'learnability' | 'speed';
 
 const metricLabels: Record<ChartMetric, string> = {
@@ -48,14 +54,33 @@ const metricLabels: Record<ChartMetric, string> = {
   speed:        'Speed',
 };
 
-// component
+/* ── download helper ───────────────────────────────────── */
+async function downloadArch(archId: string, filename: string) {
+  try {
+    const res = await fetch(`${API}/api/download_arch/${archId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.endsWith('.pkl') ? filename : `${filename}.pkl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Download failed:', err);
+  }
+}
+
+// ── component ──
 
 export default function TournamentViewer() {
   // pool config
-  const [nRandom, setNRandom]             = useState(6);
-  const [pklFiles, setPklFiles]           = useState<string[]>([]);
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
-  const [dropdownValue, setDropdownValue] = useState('');
+  const [nRandom, setNRandom]               = useState(6);
+  const [uploadedArchs, setUploadedArchs]   = useState<UploadedArch[]>([]);
+  const [uploading, setUploading]           = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // tournament state
   const [status, setStatus]           = useState<'idle' | 'running' | 'done' | 'error'>('idle');
@@ -76,29 +101,42 @@ export default function TournamentViewer() {
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [fightLog]);
 
-  // fetch saved files
-  const fetchFiles = async () => {
-    try {
-            // Grab the URL and cleanly slice off any invisible spaces
-      const baseUrl = import.meta.env.VITE_API_BASE_URL.trim();
+  /* ── upload .pkl files ─────────────────────────────────── */
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-      // Use backticks to inject it into the fetch call
-      const res = await fetch(`${baseUrl}/api/saved_archs`);
-      if (res.ok) { const d = await res.json(); setPklFiles(d.files || []); }
-    } catch (e) { console.error('Could not load pkl files', e); }
-  };
-  useEffect(() => { fetchFiles(); }, []);
+    setUploading(true);
+    const newArchs: UploadedArch[] = [];
 
-  // pool helpers
-  const addFile = () => {
-    if (dropdownValue && !selectedFiles.includes(dropdownValue)) {
-      setSelectedFiles(prev => [...prev, dropdownValue]);
-      setDropdownValue('');
+    for (const file of Array.from(files)) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch(`${API}/api/upload_arch`, { method: 'POST', body: formData });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        newArchs.push({
+          arch_id: data.arch_id,
+          filename: file.name.replace(/\.pkl$/i, ''),
+        });
+      } catch (err) {
+        console.error(`Failed to upload ${file.name}:`, err);
+      }
     }
-  };
-  const removeFile = (f: string) => setSelectedFiles(prev => prev.filter(x => x !== f));
 
-  const expectedPool   = nRandom + selectedFiles.length;
+    setUploadedArchs(prev => [...prev, ...newArchs]);
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeUploaded = (archId: string) => {
+    setUploadedArchs(prev => prev.filter(a => a.arch_id !== archId));
+  };
+
+  const expectedPool   = nRandom + uploadedArchs.length;
   const expectedFights = (expectedPool * (expectedPool - 1)) / 2;
 
   // reset
@@ -113,7 +151,7 @@ export default function TournamentViewer() {
     setLog('Configure your pool and start the tournament.');
   };
 
-  // start tournament
+  /* ── start tournament ──────────────────────────────────── */
   const startTournament = () => {
     if (expectedPool < 2) return;
 
@@ -129,7 +167,13 @@ export default function TournamentViewer() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ n_random: nRandom, loaded_archs: selectedFiles }));
+      ws.send(JSON.stringify({
+        n_random: nRandom,
+        loaded_arch_ids: uploadedArchs.map(a => ({
+          arch_id: a.arch_id,
+          name: a.filename,
+        })),
+      }));
     };
 
     ws.onmessage = (event) => {
@@ -175,7 +219,7 @@ export default function TournamentViewer() {
         setLeaderboard(prev =>
           prev.map(e => ({
             ...e,
-            score:         data.scores[e.id],
+            score:        data.scores[e.id],
             learnability: data.learnabilities[e.id],
             speed:        data.speeds[e.id],
             fit_time:     data.fit_times[e.id],
@@ -203,11 +247,9 @@ export default function TournamentViewer() {
   // derived
   const pct    = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
   const winner = status === 'done' && leaderboard.length > 0 ? leaderboard[0] : null;
-
-  // chart data sorted by selected metric
   const chartData = [...leaderboard].sort((a, b) => b[chartMetric] - a[chartMetric]);
 
-  // render
+  // ── render ──
   return (
     <div className="page-content">
 
@@ -222,7 +264,7 @@ export default function TournamentViewer() {
         >
           {status === 'running'
             ? 'Running…'
-            : `Start (${expectedPool} archs -> ${expectedFights} fights)`}
+            : `Start (${expectedPool} archs → ${expectedFights} fights)`}
         </button>
         {(status === 'done' || status === 'error') && (
           <button className="btn btn-back" onClick={resetToIdle}>New Tournament</button>
@@ -234,11 +276,13 @@ export default function TournamentViewer() {
 
       <div className="graph-container" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-        {/* pool configuration */}
+        {/* ── pool configuration ─────────────────────────── */}
         {status === 'idle' && (
           <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '8px' }}>
             <h3 style={{ color: 'white', margin: '0 0 16px 0', fontSize: '15px' }}>Pool Configuration</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              {/* random count */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <label style={{ color: '#94a3b8', fontSize: '13px', minWidth: '160px' }}>Random Architectures:</label>
                 <input
@@ -250,46 +294,47 @@ export default function TournamentViewer() {
                   }}
                 />
               </div>
+
+              {/* upload section */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <label style={{ color: '#94a3b8', fontSize: '13px', minWidth: '160px' }}>Inject Saved Archs:</label>
-                  <select
-                    value={dropdownValue}
-                    onChange={e => setDropdownValue(e.target.value)}
-                    style={{
-                      flex: 1, maxWidth: '250px', padding: '6px', borderRadius: '4px',
-                      background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px',
-                    }}
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pkl"
+                    multiple
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    className="btn btn-back"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
                   >
-                    <option value="">Select a .pkl file…</option>
-                    {pklFiles.filter(f => !selectedFiles.includes(f)).map(f => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
-                  </select>
-                  <button onClick={addFile} disabled={!dropdownValue}
-                    style={{
-                      padding: '6px 12px', borderRadius: '4px', fontSize: '13px',
-                      background: dropdownValue ? '#3b82f6' : '#334155',
-                      color: 'white', border: 'none', cursor: dropdownValue ? 'pointer' : 'default',
-                    }}
-                  >+ Add</button>
-                  <button onClick={fetchFiles} title="Refresh list"
-                    style={{
-                      background: '#334155', border: '1px solid #475569', borderRadius: '4px',
-                      padding: '5px 8px', cursor: 'pointer', color: 'white', fontSize: '13px',
-                    }}
-                  >Refresh</button>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    {uploading ? 'Uploading…' : 'Upload .pkl files'}
+                  </button>
                 </div>
-                {selectedFiles.length > 0 && (
+
+                {/* uploaded chips */}
+                {uploadedArchs.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginLeft: '172px' }}>
-                    {selectedFiles.map(file => (
-                      <span key={file} style={{
+                    {uploadedArchs.map(arch => (
+                      <span key={arch.arch_id} style={{
                         display: 'inline-flex', alignItems: 'center', gap: '6px',
                         padding: '4px 10px', borderRadius: '12px',
                         backgroundColor: '#334155', color: '#e2e8f0', fontSize: '12px',
                       }}>
-                        {file}
-                        <button onClick={() => removeFile(file)}
+                        {arch.filename}.pkl
+                        <button onClick={() => removeUploaded(arch.arch_id)}
                           style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: 0, lineHeight: 1 }}
                         >×</button>
                       </span>
@@ -297,13 +342,15 @@ export default function TournamentViewer() {
                   </div>
                 )}
               </div>
+
+              {/* summary */}
               <div style={{
                 padding: '10px 16px', borderRadius: '6px', backgroundColor: '#0f172a',
                 color: '#94a3b8', fontSize: '13px',
               }}>
                 Total pool: <strong style={{ color: 'white' }}>{expectedPool}</strong> architectures
                 → <strong style={{ color: 'white' }}>{expectedFights}</strong> fights
-                {selectedFiles.length > 0 && <span> ({nRandom} random + {selectedFiles.length} saved)</span>}
+                {uploadedArchs.length > 0 && <span> ({nRandom} random + {uploadedArchs.length} uploaded)</span>}
                 <br />
                 <span style={{ fontSize: '11px', color: '#475569' }}>
                   Uses arena.get_scores() with random 3D tensors. Scores = learnability + speed, normalized against global baselines.
@@ -313,7 +360,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* progress bar */}
+        {/* ── progress bar ───────────────────────────────── */}
         {status !== 'idle' && (
           <div style={{ backgroundColor: '#1e293b', padding: '16px 20px', borderRadius: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
@@ -331,7 +378,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* winner banner */}
+        {/* ── winner banner ──────────────────────────────── */}
         {winner && (() => {
           const fc = Math.max(winner.fight_count, 1);
           return (
@@ -339,10 +386,28 @@ export default function TournamentViewer() {
               background: 'linear-gradient(135deg, #78350f 0%, #92400e 50%, #78350f 100%)',
               border: '2px solid #fbbf24', borderRadius: '8px', padding: '20px', textAlign: 'center',
             }}>
-              <h3 style={{ color: '#fbbf24', margin: '4px 0', fontSize: '20px' }}>
-                Winner: {winner.name}
-                {winner.source === 'loaded' && <span style={{ fontSize: '14px', color: '#fde68a' }}> (saved)</span>}
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px' }}>
+                <h3 style={{ color: '#fbbf24', margin: '4px 0', fontSize: '20px' }}>
+                  Winner: {winner.name}
+                  {winner.source === 'uploaded' && <span style={{ fontSize: '14px', color: '#fde68a' }}> (uploaded)</span>}
+                </h3>
+                <button
+                  onClick={() => downloadArch(winner.arch_id, winner.name.replace(/\s+/g, '_'))}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px',
+                    background: '#b45309', border: '1px solid #fbbf24', borderRadius: '6px',
+                    color: '#fde68a', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Save .pkl
+                </button>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '8px', fontSize: '13px', color: '#fde68a' }}>
                 <span>Score: <strong>{winner.score.toFixed(3)}</strong></span>
                 <span>Learn: <strong>{winner.learnability.toFixed(3)}</strong></span>
@@ -353,7 +418,7 @@ export default function TournamentViewer() {
           );
         })()}
 
-        {/* leaderboard + fight log */}
+        {/* ── leaderboard + fight log ────────────────────── */}
         {leaderboard.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
 
@@ -436,7 +501,7 @@ export default function TournamentViewer() {
                           {nameJ} ({f.score_j.toFixed(2)})
                         </span>
                         <span style={{ color: '#475569', marginLeft: 'auto', fontSize: '10px' }}>
-                          {isExpanded ? '^' : 'v'}
+                          {isExpanded ? '▲' : '▼'}
                         </span>
                       </div>
 
@@ -469,7 +534,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* final standings table */}
+        {/* ── final standings table ──────────────────────── */}
         {status === 'done' && leaderboard.length > 0 && (
           <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px' }}>
             <h3 style={{ color: 'white', margin: '0 0 12px 0', fontSize: '15px' }}>Final Standings</h3>
@@ -496,9 +561,7 @@ export default function TournamentViewer() {
                         borderBottom: '1px solid #1e293b',
                         backgroundColor: rank === 0 ? 'rgba(251,191,36,0.08)' : 'transparent',
                       }}>
-                        <td style={{ padding: '8px', color: '#94a3b8' }}>
-                          {'#' + (rank + 1)}
-                        </td>
+                        <td style={{ padding: '8px', color: '#94a3b8' }}>{'#' + (rank + 1)}</td>
                         <td style={{ padding: '8px', color: 'white' }}>
                           <span style={{
                             display: 'inline-block', width: '10px', height: '10px',
@@ -507,7 +570,7 @@ export default function TournamentViewer() {
                           {entry.name}
                         </td>
                         <td style={{ padding: '8px', color: '#94a3b8', fontSize: '12px' }}>
-                          {entry.source === 'loaded' ? 'Saved' : 'Random'}
+                          {entry.source === 'uploaded' ? 'Uploaded' : 'Random'}
                         </td>
                         <td style={{ padding: '8px', textAlign: 'right', color: 'white', fontWeight: 600 }}>
                           {entry.score.toFixed(3)}
@@ -525,10 +588,23 @@ export default function TournamentViewer() {
                           {entry.fight_count}/{poolSize - 1}
                         </td>
                         <td style={{ padding: '8px', textAlign: 'right' }}>
-                          <SaveArchButton
-                            archId={entry.arch_id}
-                            defaultName={entry.name.replace(/\s+/g, '_')}
-                          />
+                          <button
+                            onClick={() => downloadArch(entry.arch_id, entry.name.replace(/\s+/g, '_'))}
+                            title="Download .pkl"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '4px',
+                              padding: '4px 10px', background: '#334155', border: '1px solid #475569',
+                              borderRadius: '4px', color: '#e2e8f0', cursor: 'pointer', fontSize: '11px',
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="7 10 12 15 17 10" />
+                              <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                            .pkl
+                          </button>
                         </td>
                       </tr>
                     );

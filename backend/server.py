@@ -145,8 +145,8 @@ async def tournament_ws(websocket: WebSocket):
     await websocket.accept()
     data = await websocket.receive_json()
 
-    n_random     = data.get("n_random", 8)
-    loaded_files = data.get("loaded_archs", [])
+    n_random        = data.get("n_random", 8)
+    loaded_arch_ids = data.get("loaded_arch_ids", [])   # ← changed
 
     # ── build architecture pool ──
     architectures = []
@@ -155,23 +155,29 @@ async def tournament_ws(websocket: WebSocket):
     for i in range(n_random):
         arch    = generator.generate(12)
         arch_id = str(uuid.uuid4())
-        session_archs[arch_id] = arch
+        arch_store[arch_id] = arch
         architectures.append(arch)
         arch_info.append({
             "id": len(arch_info), "arch_id": arch_id,
             "name": f"Random {i}", "source": "random",
         })
 
-    for filename in loaded_files:
-        if os.path.exists(filename):
-            arch    = Architecture.load(filename)
-            arch_id = str(uuid.uuid4())
-            session_archs[arch_id] = arch
-            architectures.append(arch)
-            arch_info.append({
-                "id": len(arch_info), "arch_id": arch_id,
-                "name": filename.replace(".pkl", ""), "source": "loaded",
-            })
+    # ── load uploaded architectures from arch_store ──
+    for entry in loaded_arch_ids:
+        aid  = entry.get("arch_id", "")
+        name = entry.get("name", aid[:8])
+        arch = arch_store.get(aid)
+
+        if arch is None:
+            print(f"Warning: arch_id {aid} not found in store, skipping")
+            continue
+
+        # Re-store under same ID so download still works
+        architectures.append(arch)
+        arch_info.append({
+            "id": len(arch_info), "arch_id": aid,
+            "name": name, "source": "uploaded",
+        })
 
     n_archs = len(architectures)
     total   = n_archs * (n_archs - 1) // 2
@@ -187,7 +193,7 @@ async def tournament_ws(websocket: WebSocket):
         await websocket.send_json({"type": "done", "final_scores": []})
         return
 
-    # ── accumulators (raw log-values, summed across fights) ──
+    # ── everything below stays exactly the same ──
     raw_learn_sum = [0.0] * n_archs
     raw_speed_sum = [0.0] * n_archs
     raw_time_sum  = [0.0] * n_archs
@@ -215,7 +221,6 @@ async def tournament_ws(websocket: WebSocket):
                 delay_i, delay_j = 10.0, 10.0
                 failed = True
 
-            # ── raw log values (same formula as occam_selection) ──
             log_learn_i = math.log(max(score_i, 1e-10))
             log_learn_j = math.log(max(score_j, 1e-10))
             log_speed_i = math.log(max(1.0 / max(delay_i, 1e-6), 1e-10))
@@ -230,7 +235,6 @@ async def tournament_ws(websocket: WebSocket):
             fight_counts[i]  += 1
             fight_counts[j]  += 1
 
-            # ── current normalized metrics for ALL archs (leaderboard) ──
             scores_arr = []
             learns_arr = []
             speeds_arr = []
@@ -248,7 +252,6 @@ async def tournament_ws(websocket: WebSocket):
                 scores_arr.append(comb)
                 times_arr.append(raw_time_sum[k] / fc)
 
-            # ── per-fight normalized values (for fight log detail) ──
             fl_i = (log_learn_i - arena.avg_learn) / arena.std_learn
             fl_j = (log_learn_j - arena.avg_learn) / arena.std_learn
             fs_i = (log_speed_i - arena.avg_speed) / arena.std_speed
@@ -274,7 +277,6 @@ async def tournament_ws(websocket: WebSocket):
                 "fight_counts":   fight_counts,
             })
 
-    # ── final ──
     final_scores = []
     for k in range(n_archs):
         fc    = max(fight_counts[k], 1)
