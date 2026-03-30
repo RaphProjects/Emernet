@@ -72,13 +72,29 @@ async def upload_arch(file: UploadFile = File(...)):
         arch_id = str(uuid.uuid4())
         arch_store[arch_id] = arch
 
-        layout = compute_dag_layout(arch)          # your existing layout function
-        return {
-            "arch_id": arch_id,
-            "nodes": layout["nodes"],
-            "edges": layout["edges"],
-        }
+        # compute_dag_layout returns {node_id: (x, y)}
+        pos = compute_dag_layout(arch)
+
+        # Build nodes/edges exactly like /api/generate does
+        nodes = []
+        for n in arch.nodes:
+            mod = arch.nodes[n]['module']
+            x, y = pos.get(n, (0, 0))
+            nodes.append({
+                "id": str(n),
+                "type": mod.__class__.__name__,
+                "module_type": mod.module_type.name,
+                "x": x + 500,
+                "y": y + 60,
+            })
+
+        edges = [{"source": str(u), "target": str(v)} for u, v in arch.edges]
+
+        return {"arch_id": arch_id, "nodes": nodes, "edges": edges}
+
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"error": str(e)}
     
 @app.get("/api/download_arch/{arch_id}")
@@ -274,46 +290,46 @@ async def tournament_ws(websocket: WebSocket):
     })
 
 @app.get("/api/fight_viz")
-async def fight_viz(arch_a_file: str = None, arch_b_file: str = None):
-    # Keep trying until we successfully simulate a valid fight
+async def fight_viz(arch_a_id: str = None, arch_b_id: str = None):
     generating_A = True
     generating_B = True
-    if arch_a_file:
-        generating_A = False
-        if not os.path.exists(arch_a_file):
-            raise HTTPException(status_code=404, detail=f"{arch_a_file} not found")
-        arch_a = Architecture.load(arch_a_file)
-    if arch_b_file:
-        generating_B = False
-        if not os.path.exists(arch_b_file):
-            raise HTTPException(status_code=404, detail=f"{arch_b_file} not found")
-        arch_b = Architecture.load(arch_b_file)
 
+    if arch_a_id and arch_a_id in arch_store:
+        generating_A = False
+        arch_a = arch_store[arch_a_id]
+
+    if arch_b_id and arch_b_id in arch_store:
+        generating_B = False
+        arch_b = arch_store[arch_b_id]
 
     attempts = 0
     while attempts < 300:
+        attempts += 1
         try:
-            if arch_a_file is None:
+            if generating_A:
                 arch_a = generator.generate(12)
-            if arch_b_file is None:
+            if generating_B:
                 arch_b = generator.generate(12)
 
-            arch_a_id = str(uuid.uuid4())
-            arch_b_id = str(uuid.uuid4())
-            session_archs[arch_a_id] = arch_a
-            session_archs[arch_b_id] = arch_b
-            
+            # Store results so download works
+            new_a_id = str(uuid.uuid4())
+            new_b_id = str(uuid.uuid4())
+            arch_store[new_a_id] = arch_a
+            arch_store[new_b_id] = arch_b
+
             result = await asyncio.to_thread(
-                run_fight_visualization, arch_a, arch_b, max_iter=500, lr=5e-3, n_snapshots=50, generating_A=generating_A, generating_B=generating_B
+                run_fight_visualization, arch_a, arch_b,
+                max_iter=500, lr=5e-3, n_snapshots=50,
+                generating_A=generating_A, generating_B=generating_B,
             )
-            result["fight_a"]["arch_id"] = arch_a_id  # A learning B (this is Arch A)
-            result["fight_b"]["arch_id"] = arch_b_id  # B learning A (this is Arch B)
+            result["fight_a"]["arch_id"] = new_a_id
+            result["fight_b"]["arch_id"] = new_b_id
             return result
         except Exception as e:
-            # If the architectures were completely broken, catch the error 
-            # and let the loop generate a new pair automatically
             print(f"Skipping bad architecture pair: {e}")
             continue
+
+    raise HTTPException(status_code=500, detail="Could not produce a valid fight after 300 attempts")
     
 @app.get("/api/saved_archs")
 def list_saved_archs():

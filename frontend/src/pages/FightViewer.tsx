@@ -1,6 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
-import { useState, useMemo, useEffect } from 'react';
-import SaveArchButton from '../components/SaveArchButton';
+import { useState, useMemo, useRef } from 'react';
+
+const API = import.meta.env.VITE_API_BASE_URL;
 
 interface Snapshot {
   epoch: number;
@@ -15,8 +16,8 @@ interface FightSide {
   snapshots: Snapshot[];
   loss_history: number[];
   broken: boolean;
-  fit_time: number;  
-  score: number;   
+  fit_time: number;
+  score: number;
 }
 
 interface FightData {
@@ -37,6 +38,25 @@ function formatChartData(xCoords: number[], fightSide: FightSide, snapshotIndex:
   }));
 }
 
+/* ── Download helper ─────────────────────────────────────── */
+async function downloadArch(archId: string, filename: string) {
+  try {
+    const res = await fetch(`${API}/api/download_arch/${archId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.endsWith('.pkl') ? filename : `${filename}.pkl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Download failed:', err);
+  }
+}
+
 function FightChart({ title, fightSide, fightData, snapIdx, isWinner }: {
   title: string;
   fightSide: FightSide;
@@ -53,37 +73,51 @@ function FightChart({ title, fightSide, fightData, snapIdx, isWinner }: {
   );
 
   return (
-    <div style={{ 
-      backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px', 
+    <div style={{
+      backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px',
       display: 'flex', flexDirection: 'column', gap: '4px',
-      border: isWinner ? '2px solid #fbbf24' : '2px solid transparent' 
+      border: isWinner ? '2px solid #fbbf24' : '2px solid transparent'
     }}>
-      
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
         <div>
           <h3 style={{ color: isWinner ? '#fbbf24' : 'white', margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isWinner && <span>Winner: </span>} {title}
           </h3>
-          
+
           <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', columnGap: '12px', marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
             <span>Loss:</span> <strong style={{ color: 'white' }}>{currentLoss != null ? currentLoss.toFixed(4) : 'NaN'}</strong>
             <span>Score:</span> <strong style={{ color: '#10b981' }}>{fightSide.score.toFixed(2)}</strong>
             <span>Time:</span> <strong style={{ color: 'white' }}>{fightSide.fit_time.toFixed(2)}s</strong>
           </div>
 
-          <button 
+          <button
             onClick={() => setAutoScaleY(!autoScaleY)}
-            style={{ 
-              marginTop: '8px', padding: '2px 8px', fontSize: '11px', 
-              background: autoScaleY ? '#3b82f6' : '#334155', 
-              color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' 
+            style={{
+              marginTop: '8px', padding: '2px 8px', fontSize: '11px',
+              background: autoScaleY ? '#3b82f6' : '#334155',
+              color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
             }}
           >
             {autoScaleY ? 'Free Y-Axis' : 'Locked Y-Axis'}
           </button>
         </div>
 
-        <SaveArchButton archId={fightSide.arch_id} defaultName={title.replace(/\s+/g, '_')} />
+        {/* ── Download button (replaces SaveArchButton) ── */}
+        <button
+          className="btn btn-primary"
+          onClick={() => downloadArch(fightSide.arch_id, title.replace(/\s+/g, '_'))}
+          title="Download this architecture as .pkl"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Save .pkl
+        </button>
       </div>
 
       {fightSide.broken ? (
@@ -109,87 +143,162 @@ function FightChart({ title, fightSide, fightData, snapIdx, isWinner }: {
 }
 
 export default function FightViewer() {
-  const [pklFiles, setPklFiles] = useState<string[]>([]);
-  const [archAFile, setArchAFile] = useState<string>("");
-  const [archBFile, setArchBFile] = useState<string>("");
+  const [archAId, setArchAId] = useState<string | null>(null);
+  const [archBId, setArchBId] = useState<string | null>(null);
+  const [archAName, setArchAName] = useState<string>('');
+  const [archBName, setArchBName] = useState<string>('');
+  const [uploadingA, setUploadingA] = useState(false);
+  const [uploadingB, setUploadingB] = useState(false);
   const [fightData, setFightData] = useState<FightData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [snapIdx, setSnapIdx] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchFiles = async () => {
+  const fileInputA = useRef<HTMLInputElement>(null);
+  const fileInputB = useRef<HTMLInputElement>(null);
+
+  /* ── Upload a .pkl and get back an arch_id ─────────────── */
+  const handleUpload = async (
+    file: File,
+    setId: (id: string | null) => void,
+    setName: (n: string) => void,
+    setUploading: (b: boolean) => void,
+    inputRef: React.RefObject<HTMLInputElement>,
+  ) => {
+    setUploading(true);
+    setError(null);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/saved_archs");
-      if (res.ok) {
-        const data = await res.json();
-        setPklFiles(data.files || []);
-      }
-    } catch (err) {
-      console.error("Could not load pkl files", err);
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API}/api/upload_arch`, { method: 'POST', body: formData });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      setId(data.arch_id);
+      setName(file.name.replace(/\.pkl$/i, ''));
+    } catch (err: any) {
+      setError(`Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
     }
   };
 
-  useEffect(() => {
-    fetchFiles();
-  }, []);
+  const clearArch = (
+    setId: (id: string | null) => void,
+    setName: (n: string) => void,
+  ) => {
+    setId(null);
+    setName('');
+  };
 
+  /* ── Start fight ───────────────────────────────────────── */
   const handleStartFight = async () => {
     setIsLoading(true);
     setFightData(null);
     setError(null);
     setSnapIdx(0);
     try {
-      console.log("Backend URL:", import.meta.env.VITE_API_BASE_URL);
-      let url = `${import.meta.env.VITE_API_BASE_URL}/api/fight_viz?`;
-      if (archAFile) url += `arch_a_file=${encodeURIComponent(archAFile)}&`;
-      if (archBFile) url += `arch_b_file=${encodeURIComponent(archBFile)}`;
+      const params = new URLSearchParams();
+      if (archAId) params.set('arch_a_id', archAId);
+      if (archBId) params.set('arch_b_id', archBId);
 
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        const errData = await response.json();
-        setError(`Error: ${errData.detail || response.status}`);
+      const res = await fetch(`${API}/api/fight_viz?${params.toString()}`);
+      if (!res.ok) {
+        const errData = await res.json();
+        setError(`Error: ${errData.detail || res.status}`);
         return;
       }
-      const data = await response.json();
-      setFightData(data);
-    } catch (err) {
+      setFightData(await res.json());
+    } catch {
       setError('Could not reach the server');
     } finally {
       setIsLoading(false);
     }
   };
 
+  /* ── Arch slot UI ──────────────────────────────────────── */
+  const ArchSlot = ({ label, name, uploading, inputRef, onUpload, onClear }: {
+    label: string;
+    name: string;
+    uploading: boolean;
+    inputRef: React.RefObject<HTMLInputElement>;
+    onUpload: (f: File) => void;
+    onClear: () => void;
+  }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600 }}>{label}:</span>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pkl"
+        style={{ display: 'none' }}
+        onChange={(e) => { if (e.target.files?.[0]) onUpload(e.target.files[0]); }}
+      />
+
+      {name ? (
+        <>
+          <span style={{
+            background: '#0f172a', border: '1px solid #475569', borderRadius: '4px',
+            padding: '5px 10px', fontSize: '13px', color: '#f1f5f9', maxWidth: '180px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {name}.pkl
+          </span>
+          <button
+            onClick={onClear}
+            title="Remove — will use random instead"
+            style={{
+              background: '#7f1d1d', border: '1px solid #991b1b', borderRadius: '4px',
+              padding: '4px 8px', cursor: 'pointer', color: '#fca5a5', fontSize: '12px',
+            }}
+          >✕</button>
+        </>
+      ) : (
+        <button
+          className="btn btn-back"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          {uploading ? 'Uploading...' : 'Upload .pkl'}
+        </button>
+      )}
+
+      {!name && (
+        <span style={{ fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>Random</span>
+      )}
+    </div>
+  );
+
   return (
     <div className="page-content">
       <div className="page-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '18px', color: '#f1f5f9', margin: 0 }}>
-          Fight Arena
-        </h2>
-        
+        <h2 style={{ fontSize: '18px', color: '#f1f5f9', margin: 0 }}>Fight Arena</h2>
+
         <div style={{ width: '1px', height: '24px', background: '#334155' }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Arch A:</span>
-          <select value={archAFile} onChange={(e) => setArchAFile(e.target.value)} style={{ padding: '6px', borderRadius: '4px', background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px' }}>
-            <option value="">Random Generated</option>
-            {pklFiles.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
-        </div>
+        <ArchSlot
+          label="Arch A" name={archAName} uploading={uploadingA} inputRef={fileInputA}
+          onUpload={(f) => handleUpload(f, setArchAId, setArchAName, setUploadingA, fileInputA)}
+          onClear={() => clearArch(setArchAId, setArchAName)}
+        />
 
         <span style={{ fontSize: '14px', color: '#475569', fontWeight: 'bold' }}>VS</span>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Arch B:</span>
-          <select value={archBFile} onChange={(e) => setArchBFile(e.target.value)} style={{ padding: '6px', borderRadius: '4px', background: '#0f172a', color: 'white', border: '1px solid #475569', fontSize: '13px' }}>
-            <option value="">Random Generated</option>
-            {pklFiles.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
-          
-          <button onClick={fetchFiles} title="Refresh list" style={{ background: '#334155', border: '1px solid #475569', borderRadius: '4px', padding: '5px 10px', marginLeft: '4px', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            Refresh
-          </button>
-        </div>
+        <ArchSlot
+          label="Arch B" name={archBName} uploading={uploadingB} inputRef={fileInputB}
+          onUpload={(f) => handleUpload(f, setArchBId, setArchBName, setUploadingB, fileInputB)}
+          onClear={() => clearArch(setArchBId, setArchBName)}
+        />
 
         <div style={{ width: '1px', height: '24px', background: '#334155' }} />
 
@@ -197,7 +306,7 @@ export default function FightViewer() {
           {isLoading ? 'Computing fight (takes 30-60s)...' : 'Start Fight'}
         </button>
 
-        {error && <span style={{ color: '#ef4444', fontSize: '13px' }}>Error: {error}</span>}
+        {error && <span style={{ color: '#ef4444', fontSize: '13px' }}>⚠ {error}</span>}
       </div>
 
       <div className="graph-container" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -218,7 +327,6 @@ export default function FightViewer() {
             <FightChart title={fightData.fight_b.label} fightSide={fightData.fight_b} fightData={fightData} snapIdx={snapIdx} isWinner={fightData.fight_b.score > fightData.fight_a.score} />
           </div>
         )}
-
       </div>
     </div>
   );
