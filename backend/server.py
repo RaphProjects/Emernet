@@ -6,6 +6,9 @@ from graph.generator import Generator
 from graph.architecture import Architecture
 from backend.fight_viz import run_fight_visualization
 from backend.fight_viz import run_tournament_fight
+import pickle, io, uuid
+from fastapi import UploadFile, File
+from fastapi.responses import StreamingResponse
 import glob
 import os
 import uuid
@@ -22,7 +25,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+arch_store: dict[str, "Architecture"] = {}
 arena = Arena(architecture_size=12, verbose=False)
 generator = Generator(generation_type="agnostic")
 
@@ -57,8 +60,42 @@ def compute_dag_layout(arch, x_spacing=160, y_spacing=90):
     return pos
 
 
-# Temporary cache for architectures currently displayed on the frontend
+# Temporary cache UNUSED
 session_archs = {}
+
+@app.post("/api/upload_arch")
+async def upload_arch(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        arch = pickle.loads(contents)
+
+        arch_id = str(uuid.uuid4())
+        arch_store[arch_id] = arch
+
+        layout = compute_dag_layout(arch)          # your existing layout function
+        return {
+            "arch_id": arch_id,
+            "nodes": layout["nodes"],
+            "edges": layout["edges"],
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    
+@app.get("/api/download_arch/{arch_id}")
+async def download_arch(arch_id: str):
+    arch = arch_store.get(arch_id)
+    if arch is None:
+        return {"error": "Architecture not found"}
+
+    buf = io.BytesIO()
+    pickle.dump(arch, buf)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename={arch_id}.pkl"},
+    )
 
 @app.get("/api/generate")
 def generate_architecture():
@@ -67,7 +104,7 @@ def generate_architecture():
 
     # Generate a unique ID and cache the architecture
     arch_id = str(uuid.uuid4())
-    session_archs[arch_id] = arch
+    arch_store[arch_id] = arch  
 
     nodes = []
     for n in arch.nodes:
