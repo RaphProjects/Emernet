@@ -207,9 +207,12 @@ def test_fight_viz():
     print("Saved to fight_viz_test.png")
     
 #twolayersMLP()
-test_fight_viz()
-'''
+#test_fight_viz()
+
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+arena.find_golden_pool(n_pools=8, n_archs=8, n_refs_tests=2, n_tst_pools=4, verbose=True, randomizeHP=True, simp_bal=0)
+
+'''
 mlp = arena.make_mlp([32,16,16])
 pareto_best = Architecture.load("pareto_best.pkl")
 pareto_best = patch_module_types(pareto_best)

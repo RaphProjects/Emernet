@@ -142,16 +142,18 @@ def generate_architecture():
 
 @app.websocket("/ws/tournament")
 async def tournament_ws(websocket: WebSocket):
+    print("Waiting for client to connect...")
     await websocket.accept()
     data = await websocket.receive_json()
-
+    print("Client connected!")
     n_random        = data.get("n_random", 8)
-    loaded_arch_ids = data.get("loaded_arch_ids", [])   # ← changed
+    loaded_arch_ids = data.get("loaded_arch_ids", [])
 
     # ── build architecture pool ──
     architectures = []
     arch_info     = []
 
+    print(f"Generating {n_random} random architectures...")
     for i in range(n_random):
         arch    = generator.generate(12)
         arch_id = str(uuid.uuid4())

@@ -462,8 +462,6 @@ class Arena:
         norm_simp = z_normalize(simplicities)
 
 
-        # TODO - NORMALIZE SPEED
-
         if use_delays: 
             occam_scores = [((norm_learn[i]*(1-speed_bal)) + (norm_speed[i]*(speed_bal)))
                          for i in range(n_archs)]
@@ -478,7 +476,7 @@ class Arena:
             rank = occam_scores_sorted.index(occam_score)
             wrs[tested_arch] = rank/(len(occam_scores)-1)
 
-        return wrs, occam_scores, norm_learn, norm_simp
+        return wrs, occam_scores, norm_learn, norm_speed
 
     
     def pareto_selection(self, n_rounds=8, n_archs=10, verbose=False, randomizeHP=True, simp_bal=None):
@@ -837,6 +835,7 @@ class Arena:
         for ref_i in range(len(references_bank)):
             refs_occams.append([])
             for pool_i in range(n_pools):
+                print(f"Testing pool {pool_i} of {n_pools}")
                 archs = [references_bank[ref_i]]
                 archs.extend(pool_bank[pool_i])
                 wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
@@ -860,6 +859,7 @@ class Arena:
         min_idx = pool_errors.index(min(pool_errors))
         golden_pool = pool_bank[min_idx]
 
+        print("Starting Evalutation of Golden Pool...")
         # evaluate golden pool compared to random pools on n_tests archs
         ref_archs = [generator.generate(self.architecture_size) for _ in range(n_refs_tests)]
         distances_to_mean = []
@@ -873,7 +873,7 @@ class Arena:
             for tst_i in range(n_tst_pools):
                 random_pool = [generator.generate(self.architecture_size) for _ in range(n_archs)]
                 archs = [ref_archs[ref_i]] + random_pool
-                wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
+                wrs, occam_scores, norm_learn, norm_speed = self.occam_test(archs,n_archs=len(archs), use_delays=True)
                 learnabilities.append(occam_scores[0])
             mean_learnability = sum(learnabilities) / len(learnabilities)
             distances_to_mean.append(abs(mean_learnability - golden_learnability))
@@ -881,6 +881,15 @@ class Arena:
         avg_distance = sum(distances_to_mean) / len(distances_to_mean)
         print(f"Average absolute distance of Golden Pool from True Mean on UNSEEN archs: {avg_distance:.4f}")
         
+
+        save_dir = "golden_pool_archs"
+        os.makedirs(save_dir, exist_ok=True)
+
+        # 3. Loop through and save each one
+        for i, arch in enumerate(golden_pool):
+            filename = os.path.join(save_dir, f"golden_arch_{i}.pkl")
+            arch.save(filename)
+            print(f"Saved {filename}")
         return golden_pool
 
             

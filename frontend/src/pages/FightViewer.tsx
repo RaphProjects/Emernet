@@ -321,6 +321,18 @@ export default function FightViewer() {
           </div>
         )}
 
+        {/* ── PCA note ── */}
+        {fightData && (
+          <div style={{
+            backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
+            padding: '10px 16px', fontSize: '12px', color: '#64748b', lineHeight: '1.5',
+          }}>
+            These curves show a 1D projection (via PCA) of a high-dimensional tensor.
+            The loss is computed in the original space, so it may decrease even when the
+            projected curve does not appear to fit better.
+          </div>
+        )}
+
         {fightData && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <FightChart title={fightData.fight_a.label} fightSide={fightData.fight_a} fightData={fightData} snapIdx={snapIdx} isWinner={fightData.fight_a.score > fightData.fight_b.score} />
