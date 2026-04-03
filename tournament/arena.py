@@ -816,6 +816,84 @@ class Arena:
 
         return learn_mean, learn_std, speed_mean, speed_std
                 
+    def fast_find_golden_pool(self, n_pools=10, pool_size=11, n_refs=4, n_refs_tests=2, n_tst_pools=6, verbose=False, randomizeHP=True, simp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
+        generator = Generator(generation_type=self.generation_type)
+        references_bank = [generator.generate(self.architecture_size) for _ in range(n_refs)]
+        pool_bank = []
+        if verbose:
+            print(f"Generating {n_pools} pools of {pool_size} architectures...")
+        for i in range(n_pools):
+            pool_bank.append([generator.generate(self.architecture_size) for _ in range(pool_size)])
+        
+        ref_occams = {}
+        for ref in range(len(references_bank)):
+            ref_occams[f'ref_{ref}'] = []
+        
+        
+        for i_pool, pool in enumerate(pool_bank):
+            archs=[]
+            if verbose:
+                print(f"Testing pool {i_pool+1}/{n_pools}")
+            archs = references_bank+pool
+            wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
+            for ref in range(len(references_bank)):
+                ref_occams[f'ref_{ref}'].append(occam_scores[ref])
+        # find the pool with the lowest average distance to the mean occam score across refs
+        pool_errors = []
+        averages = {}
+        for ref in range(len(references_bank)):
+            averages[f'ref_{ref}'] = sum(ref_occams[f'ref_{ref}']) / len(ref_occams[f'ref_{ref}'])
+        deltas = {}
+        for ref in range(len(references_bank)):
+            for occam in ref_occams[f'ref_{ref}']:
+                delta = abs(occam - averages[f'ref_{ref}'])
+                if f'ref_{ref}' not in deltas:
+                    deltas[f'ref_{ref}'] = []
+                deltas[f'ref_{ref}'].append(delta)
+        
+        pools_errors = []
+        for i_pool in range(n_pools):
+            pool_error = 0
+            for ref in range(len(references_bank)):
+                pool_error += deltas[f'ref_{ref}'][i_pool]
+            pools_errors.append(pool_error)
+        
+        min_error_idx = pools_errors.index(min(pools_errors))
+        golden_pool = pool_bank[min_error_idx]
+        if verbose:
+            print("Starting Evalutation of Golden Pool...")
+        golden_pool_errors = []
+        for ref_test in range(n_refs_tests):
+            ref_arch = generator.generate(self.architecture_size)
+            archs = [ref_arch] + golden_pool
+            wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
+            golden_occam = occam_scores[0]
+
+            random_pools_occams = []
+            for tst in range(n_tst_pools):
+                random_pool = [generator.generate(self.architecture_size) for _ in range(pool_size)]
+                archs = [ref_arch] + random_pool
+                wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
+                random_pools_occams.append(occam_scores[0])
+            mean_random_occam = sum(random_pools_occams) / len(random_pools_occams)
+            golden_pool_errors.append(abs(golden_occam - mean_random_occam))  
+
+        avg_golden_pool_error = sum(golden_pool_errors) / len(golden_pool_errors)
+        avg_random_pool_error = sum([abs(occam - mean_random_occam) for occam in random_pools_occams]) / len(random_pools_occams)
+        if verbose:
+            print(f"Average absolute distance of Golden Pool from True Mean on UNSEEN archs: {avg_golden_pool_error:.4f}")
+            print(f"Average absolute distance of Random Pools from True Mean on UNSEEN archs: {avg_random_pool_error:.4f}")
+        # save the golden pool
+        save_dir = "golden_pool_archs"
+        os.makedirs(save_dir, exist_ok=True)
+        for i, arch in enumerate(golden_pool):
+            filename = os.path.join(save_dir, f"golden_arch_{i}.pkl")
+            arch.save(filename)
+            if verbose:
+                print(f"Saved {filename}")
+        return golden_pool, avg_golden_pool_error, avg_random_pool_error
 
     def find_golden_pool(self, n_pools=20, n_archs=12, n_refs_tests=2, n_tst_pools=6, verbose=False, randomizeHP=True, simp_bal=None):
         if simp_bal is None:
@@ -828,7 +906,8 @@ class Arena:
         if verbose:
             print(f"Generating {n_pools} pools of {n_archs} architectures...")
         for i in range(n_pools):
-            pool_bank.append([generator.generate(self.architecture_size) for _ in range(n_archs)]) 
+            pool_bank.append([generator.generate(self.architecture_size) for _ in range(n_archs)])
+        
         
 
         refs_occams = [] # list of lists
