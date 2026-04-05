@@ -6,7 +6,7 @@ import {
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
-// ── types ──
+//  types 
 
 interface ArchInit {
   id: number;
@@ -54,7 +54,7 @@ const metricLabels: Record<ChartMetric, string> = {
   speed:        'Speed',
 };
 
-/* ── download helper ───────────────────────────────────── */
+/* download helper  */
 async function downloadArch(archId: string, filename: string) {
   try {
     const res = await fetch(`${API}/api/download_arch/${archId}`);
@@ -73,7 +73,7 @@ async function downloadArch(archId: string, filename: string) {
   }
 }
 
-// ── component ──
+//  component 
 
 export default function TournamentViewer() {
   // pool config
@@ -101,7 +101,7 @@ export default function TournamentViewer() {
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [fightLog]);
 
-  /* ── upload .pkl files ─────────────────────────────────── */
+  /*  upload .pkl files ─ */
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -151,7 +151,7 @@ export default function TournamentViewer() {
     setLog('Configure your pool and start the tournament.');
   };
 
-  /* ── start tournament ──────────────────────────────────── */
+  /*  start tournament  */
   const startTournament = () => {
     if (expectedPool < 2) return;
 
@@ -249,7 +249,7 @@ export default function TournamentViewer() {
   const winner = status === 'done' && leaderboard.length > 0 ? leaderboard[0] : null;
   const chartData = [...leaderboard].sort((a, b) => b[chartMetric] - a[chartMetric]);
 
-  // ── render ──
+  //  render 
   return (
     <div className="page-content">
 
@@ -276,7 +276,7 @@ export default function TournamentViewer() {
 
       <div className="graph-container" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-        {/* ── pool configuration ─────────────────────────── */}
+        {/*  pool configuration ─ */}
         {status === 'idle' && (
           <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '8px' }}>
             <h3 style={{ color: 'white', margin: '0 0 16px 0', fontSize: '15px' }}>Pool Configuration</h3>
@@ -360,7 +360,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* ── progress bar ───────────────────────────────── */}
+        {/*  progress bar ─ */}
         {status !== 'idle' && (
           <div style={{ backgroundColor: '#1e293b', padding: '16px 20px', borderRadius: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
@@ -378,7 +378,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* ── winner banner ──────────────────────────────── */}
+        {/*  winner banner  */}
         {winner && (() => {
           const fc = Math.max(winner.fight_count, 1);
           return (
@@ -418,7 +418,7 @@ export default function TournamentViewer() {
           );
         })()}
 
-        {/* ── leaderboard + fight log ────────────────────── */}
+        {/*  leaderboard + fight log  */}
         {leaderboard.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
 
@@ -534,7 +534,7 @@ export default function TournamentViewer() {
           </div>
         )}
 
-        {/* ── final standings table ──────────────────────── */}
+        {/*  final standings table  */}
         {status === 'done' && leaderboard.length > 0 && (
           <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '8px' }}>
             <h3 style={{ color: 'white', margin: '0 0 12px 0', fontSize: '15px' }}>Final Standings</h3>

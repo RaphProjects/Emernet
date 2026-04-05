@@ -14,7 +14,6 @@ from collections import defaultdict
 from scipy.stats import spearmanr
 import csv
 import os
-# import plt
 import matplotlib.pyplot as plt
 
 
@@ -48,130 +47,6 @@ class Arena:
         self.avg_speed = -1.8779 # estimated over 340 runs, error +- 0.0093
         self.std_speed = 1.3691 # estimated over 340 runs, error +- 0.0124
         self.speed_bal = speed_bal
-
-    def OLD_calibrate_pcp(self, n_fights=128, min_nodes=4, max_nodes=24,
-                    initial_step=0.1, step_decay=0.98, verbose=True, 
-                    finalvalsize=32):
-        """
-        Fights architectures of different sizes against each other.
-        Adjusts PCP so that size alone doesn't predict the winner.
-        """
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        generator = Generator(generation_type=self.generation_type)
-        step = initial_step
-        
-        best_outerfunction = "log2"
-        best_distance = float('inf')
-        best_pcp = self.pcp
-        for outerfunction in ["sqrt"]:
-            self.pcp = 0.38  # reset for each outer function
-            step = initial_step
-            
-            for fight in range(n_fights):
-                if fight % 5 == 0:
-                    print(f"Fight {fight}/{n_fights} for {outerfunction}, current PCP: {self.pcp:.4f}")
-                # Keep sizes reasonable to avoid OOM
-                size1 = random.randint(min_nodes, max_nodes)
-                size2 = random.randint(min_nodes, max_nodes)
-                
-                while abs(size1 - size2) < 2:
-                    size2 = random.randint(min_nodes, max_nodes)
-                
-                firstisbigger = size1 > size2
-                
-                try:
-                    arch1 = generator.generate(size1)
-                    arch2 = generator.generate(size2)
-
-                    firstisbigger = arch1.parameter_count() > arch2.parameter_count()
-                    score1, score2 = self.get_scores(arch1, arch2, 
-                                                    outerfunction=outerfunction)
-                    firstwon = score1 > score2
-                    
-                    # Size-proportional adjustment
-                    size_ratio = max(arch1.parameter_count(), arch2.parameter_count()) / max(1, min(arch1.parameter_count(), arch2.parameter_count()))
-                    adjustment = step * math.log2(size_ratio)
-                    
-                    if firstwon == firstisbigger:
-                        # Bigger won → increase penalty
-                        self.pcp += adjustment
-                    else:
-                        # Smaller won → decrease penalty
-                        self.pcp -= adjustment
-                    
-                    self.pcp = max(0.0, self.pcp)
-                    step *= step_decay
-                    
-                except (RuntimeError, Exception) as e:
-                    if "out of memory" in str(e).lower():
-                        if device.type == 'cuda':
-                            torch.cuda.empty_cache()
-                        if verbose:
-                            print(f"  OOM on sizes {size1},{size2} — skipping")
-                        continue
-                    else:
-                        if verbose:
-                            print(f"  Error on sizes {size1},{size2}: {e} — skipping")
-                        continue
-                finally:
-                    # Always clean up
-                    if device.type == 'cuda':
-                        torch.cuda.empty_cache()
-                
-                if verbose and fight % 10 == 0:
-                    print(f"  {outerfunction} fight {fight}/{n_fights} | "
-                        f"PCP: {self.pcp:.4f} | step: {step:.4f} | "
-                        f"sizes: {size1} vs {size2}")
-            
-            # Validation
-            bigger_wins = 0
-            valid_fights = 0
-            
-            for fight in range(finalvalsize):
-                size1 = random.randint(min_nodes, max_nodes)
-                size2 = random.randint(min_nodes, max_nodes)
-                
-                while abs(size1 - size2) < 2:
-                    size2 = random.randint(min_nodes, max_nodes)
-                
-                try:
-                    arch1 = generator.generate(size1)
-                    arch2 = generator.generate(size2)
-                    
-                    # Bigger always first
-                    if arch2.parameter_count() > arch1.parameter_count():
-                        arch1, arch2 = arch2, arch1
-                    
-                    score1, score2 = self.get_scores(arch1, arch2, 
-                                                    outerfunction=outerfunction)
-                    valid_fights += 1
-                    if score1 > score2:
-                        bigger_wins += 1
-                        
-                except (RuntimeError, Exception) as e:
-                    if device.type == 'cuda':
-                        torch.cuda.empty_cache()
-                    continue
-                finally:
-                    if device.type == 'cuda':
-                        torch.cuda.empty_cache()
-            
-            if valid_fights > 0:
-                distance = abs(bigger_wins / valid_fights - 0.5)
-                print(f"\n{outerfunction}: PCP={self.pcp:.4f} | "
-                    f"bigger won {bigger_wins}/{valid_fights} | "
-                    f"distance to 0.5: {distance:.4f}")
-                
-                if distance < best_distance:
-                    best_distance = distance
-                    best_outerfunction = outerfunction
-                    best_pcp = self.pcp
-        
-        self.pcp = best_pcp
-        self.outerfunction = best_outerfunction
-        print(f"\nBest: {best_outerfunction} with PCP={best_pcp:.4f} "
-            f"(distance={best_distance:.4f})")
-        return self.pcp, best_outerfunction
 
 
     def _valid(self, *values, min_val=1e-10):
@@ -284,15 +159,6 @@ class Arena:
             if not math.isfinite(test_loss_2) or test_loss_2 <= 0:
                 test_loss_2 = 1e10
 
-            '''
-            if pcp==0:
-                score_1 = (1/(test_loss_1))**0.5 # the higher the better
-                score_2 = (1/(test_loss_2))**0.5
-                del executors[0]
-                del executors[0], learner_1, learner_2 #because executors[0] is our previous executors[1] (executors[0] was deleted, which made executors[1] become executors[0]))
-                torch.cuda.empty_cache()
-                return score_1, score_2
-            '''
             # compute the scores
             if outerfunction == "log2":
                 K_1 = math.log2(max(2,arch_1.parameter_count()))
@@ -378,10 +244,6 @@ class Arena:
         else : 
             norm_learn = z_normalize(learnability_scores)
         norm_simp = z_normalize(simplicity_scores)
-
-
-        # TODO - NORMALIZE SPEED
-
 
         if use_delays: 
             occam_scores = [((norm_learn[i]*(1-speed_bal)) + (norm_speed[i]*(speed_bal)))
@@ -576,81 +438,6 @@ class Arena:
 
         return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, simplicity_scores
         
-        
-
-    def OLD_tune_simp_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
-        generator = Generator(generation_type=self.generation_type)
-
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
-        
-        simp_bal_values = []
-        for round in range(n_rounds):
-            if use_MLPs:
-                dims = [[8], [16], [8,16], [16,32], [16,16,32],[16,32,64]]
-                architectures = [self.make_mlp(hidden_sizes=size) for size in dims]
-                while len(architectures) < n_archs:
-                    architectures.append(generator.generate(self.architecture_size))
-            n_pairs = n_archs * (n_archs - 1) // 2
-            learnability_scores = [0 for _ in range(n_archs)]
-            simplicity_scores = [0 for _ in range(n_archs)]
-            n_fight = 0
-            for i in range(n_archs):
-                for j in range(i + 1, n_archs):
-                    if verbose:
-                        print(f"fight n°{n_fight+1}/{n_pairs}: arch {i} vs {j}")
-                    n_fight +=1
-                    score_i, score_j = self.get_scores(
-                        architectures[i], architectures[j], randomizeHP=randomizeHP
-                    )
-                    learnability_scores[i] += math.log((max(score_i,1e-10)))
-                    learnability_scores[j] += math.log((max(score_j,1e-10)))
-                    simplicity_scores[i] += math.log((max(score_j,1e-10)))
-                    simplicity_scores[j] += math.log((max(score_i,1e-10)))
-                    if verbose:
-                        print(f"score_{i} : {score_i}, score_{j} : {score_j}")
-            learnability_scores = [score/(n_archs-1) for score in learnability_scores]
-            simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
-            norm_learn = z_normalize(learnability_scores)
-            norm_simp = z_normalize(simplicity_scores)
-
-            # Now we find the simp_bal value that minmizes the distances between the occam_scores of the mlp
-            norm_learn_mlp = norm_learn[:len(dims)]
-            norm_simp_mlp = norm_simp[:len(dims)]
-
-            print(f"norm_learn_mlp: {norm_learn_mlp}")
-            print(f"norm_simp_mlp: {norm_simp_mlp}")
-
-            mu_L = sum(norm_learn_mlp) / len(norm_learn_mlp)
-            mu_S = sum(norm_simp_mlp) / len(norm_simp_mlp)
-            
-            num = 0.0
-            den = 0.0
-            for L, S in zip(norm_learn_mlp, norm_simp_mlp):
-                delta_L = L - mu_L
-                delta_D = (S - mu_S) - (L - mu_L)
-                
-                num += delta_L * delta_D
-                den += delta_D * delta_D
-                
-            if den == 0:
-                best_simp_bal = 0.5 # Fallback if all scores are identical
-            else:
-                best_simp_bal = - (num / den)
-                
-            # Clip between 0 and 1 to keep it a valid percentage
-            best_simp_bal = max(0.0, min(1.0, best_simp_bal))
-            
-            if verbose:
-                print(f"Round {round} optimal simp_bal: {best_simp_bal:.4f}")
-            simp_bal_values.append(best_simp_bal)
-
-        avg_simp_bal = sum(simp_bal_values) / len(simp_bal_values)
-        std_simp_bal = math.sqrt(sum((v - avg_simp_bal) ** 2 for v in simp_bal_values) / len(simp_bal_values))
-        return simp_bal_values , avg_simp_bal, std_simp_bal
     
     def tune_speed_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
         generator = Generator(generation_type=self.generation_type)
@@ -894,195 +681,7 @@ class Arena:
             if verbose:
                 print(f"Saved {filename}")
         return golden_pool, avg_golden_pool_error, avg_random_pool_error
-
-    def find_golden_pool(self, n_pools=20, n_archs=12, n_refs_tests=2, n_tst_pools=6, verbose=False, randomizeHP=True, simp_bal=None):
-        if simp_bal is None:
-            simp_bal = self.simp_bal
-        generator = Generator(generation_type=self.generation_type)
-        references_bank = [self.make_mlp(hidden_sizes=[32,32,64]), self.make_mlp(hidden_sizes=[8,12]), 
-                            Architecture.load('pareto_arch_patched.pkl'),
-                            generator.generate(self.architecture_size), generator.generate(self.architecture_size)]
-        pool_bank = []
-        if verbose:
-            print(f"Generating {n_pools} pools of {n_archs} architectures...")
-        for i in range(n_pools):
-            pool_bank.append([generator.generate(self.architecture_size) for _ in range(n_archs)])
-        
-        
-
-        refs_occams = [] # list of lists
-        for ref_i in range(len(references_bank)):
-            refs_occams.append([])
-            for pool_i in range(n_pools):
-                print(f"Testing pool {pool_i} of {n_pools}")
-                archs = [references_bank[ref_i]]
-                archs.extend(pool_bank[pool_i])
-                wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
-                refs_occams[ref_i].append(occam_scores[0])
-
-
-        refs_sum = [copy.deepcopy(refs_occams[0])]
-        for ref_i in range(1, len(refs_occams)):
-            for idx, occam in enumerate(refs_occams[ref_i]):
-                refs_sum[idx] += occam
-
-        true_means = [sum(pool_scores) / n_pools for pool_scores in refs_occams]
-        
-        pool_errors = [0.0] * n_pools
-        for pool_i in range(n_pools):
-            mse = 0.0
-            for ref_i in range(len(references_bank)):
-                mse += (refs_occams[ref_i][pool_i] - true_means[ref_i]) ** 2
-            pool_errors[pool_i] = mse / len(references_bank)
             
-        min_idx = pool_errors.index(min(pool_errors))
-        golden_pool = pool_bank[min_idx]
-
-        print("Starting Evalutation of Golden Pool...")
-        # evaluate golden pool compared to random pools on n_tests archs
-        ref_archs = [generator.generate(self.architecture_size) for _ in range(n_refs_tests)]
-        distances_to_mean = []
-        for ref_i in range(n_refs_tests):
-            archs = [ref_archs[ref_i]] + golden_pool
-            wrs, occam_scores, norm_learn, norm_simp = self.occam_test(archs,n_archs=len(archs), use_delays=True)
-            golden_learnability = occam_scores[0]
-
-            # We compare it to the mean in a few random pools
-            learnabilities = []
-            for tst_i in range(n_tst_pools):
-                random_pool = [generator.generate(self.architecture_size) for _ in range(n_archs)]
-                archs = [ref_archs[ref_i]] + random_pool
-                wrs, occam_scores, norm_learn, norm_speed = self.occam_test(archs,n_archs=len(archs), use_delays=True)
-                learnabilities.append(occam_scores[0])
-            mean_learnability = sum(learnabilities) / len(learnabilities)
-            distances_to_mean.append(abs(mean_learnability - golden_learnability))
-        
-        avg_distance = sum(distances_to_mean) / len(distances_to_mean)
-        print(f"Average absolute distance of Golden Pool from True Mean on UNSEEN archs: {avg_distance:.4f}")
-        
-
-        save_dir = "golden_pool_archs"
-        os.makedirs(save_dir, exist_ok=True)
-
-        # 3. Loop through and save each one
-        for i, arch in enumerate(golden_pool):
-            filename = os.path.join(save_dir, f"golden_arch_{i}.pkl")
-            arch.save(filename)
-            print(f"Saved {filename}")
-        return golden_pool
-
-            
-    def OLD_start(self, randomizeHP = False):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if device.type=='cuda':
-            max_batch_size = 2048
-        else:
-            max_batch_size = 32
-        
-        winners = []
-        winner_scores = [0]
-        current_winner_id = 0
-
-        
-            
-        # Generate the first architecture
-        generator = Generator(generation_type=self.generation_type)
-        current_best = generator.generate(self.architecture_size)
-        winners.append(copy.deepcopy(current_best))
-        for n_fight in range(self.n_fights):
-            print(f"fight n°{n_fight}")
-            architectures = []
-            architectures.append(current_best)
-            scores = []
-            # arch 1, executor 0
-            for gen_architecture in range(self.arena_contestants-1):
-                # Generate a new architecture
-                new_architecture = generator.generate(self.architecture_size)
-                architectures.append(new_architecture)
-                
-            for architecture in architectures:
-                scores.append(0)
-
-            # architectures is filled, now we evaluate them two by two (every possible pair)
-            for i in range(self.arena_contestants-1): 
-                for j in range(i+1, self.arena_contestants):   
-                    score_i, score_j = self.get_scores(architectures[i], architectures[j], randomizeHP=randomizeHP)
-                    if score_j < score_i:
-                        scores[i] = scores[i] + 1
-                    else:
-                        scores[j] = scores[j] + 1
-                    '''
-                    if self.verbose:
-                        print(f"Architecture {i} of round {n_fight} :")
-                        architectures[i].describe()
-                        print(f"Architecture {j} of round {n_fight} :")
-                        architectures[j].describe()
-                        print(f"Test loss for executor {i}: {test_loss_i}")
-                        print(f"Test loss for executor {j}: {test_loss_j}")
-                    '''
-            # Fight loop
-            max_score_id = scores.index(max(scores))
-            if max_score_id == 0: # because the first architecture is always the previous best
-                winner_scores[current_winner_id] += scores[max_score_id]
-            else:
-                winners.append(copy.deepcopy(architectures[max_score_id]))
-                winner_scores.append(scores[max_score_id])
-                current_winner_id += 1
-                current_best = copy.deepcopy(architectures[max_score_id])
-
-        if self.verbose:
-            print(f"Winners Scores: {winners}")
-            print(f"Final scores: {scores}")
-            print(f"Final architecture: ")
-            current_best.describe()
-        return winner_scores, winners
-    
-    #################### END OF TRAINING ####################
-
-    def OLD_test(self,architecture,arena_contestants = 3, n_test=8, verbose=False):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if device.type=='cuda':
-            max_batch_size = 2048
-        else:
-            max_batch_size = 32
-        arch_scores = []
-        generator = Generator(generation_type=self.generation_type)
-        current_best = architecture
-        
-        for n_fight in range(n_test):
-            if verbose:
-                print(f"Test fight n°{n_fight}")
-            architectures = []
-            architectures.append(current_best)
-            scores = []
-            
-            # arch 1, executor 0
-            for gen_architecture in range(arena_contestants-1):
-                # Generate a new architecture
-                new_architecture = generator.generate(self.architecture_size)
-                architectures.append(new_architecture)
-                
-            for architecture in architectures:
-                scores.append(0)
-
-            # architectures is filled, now we evaluate them two by two (every possible pair)
-            for i in range(self.arena_contestants-1): 
-                for j in range(i+1, self.arena_contestants):
-                    score_i, score_j = self.get_scores(architectures[i], architectures[j])
-                    if score_i > score_j:
-                        scores[i] = scores[i] + 1
-                    else:
-                        scores[j] = scores[j] + 1
-            # Fight loop
-            arch_scores.append(scores)
-
-        # We compute the number of times the first architecture was the best
-        # print(arch_scores)
-        n_wins = 0
-        for score in arch_scores:
-            if score[0] == max(score):
-                n_wins += 1
-        return arch_scores, n_wins
             
     
     def make_mlp(self,hidden_sizes, inputTens=None):
@@ -1120,29 +719,6 @@ class Arena:
             prev_f = hidden_f
         return MLP_arch
 
-    ############################ MLP COMPARISON ############################
-
-    def test_mlp(self, architecture, mlp_n_tests=64, mlp_hidden_sizes=[32,32,16], verbose=True):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        scores=[]
-        for test in range(mlp_n_tests):
-            input_p = random.randint(1,16)
-            input_f = random.randint(1,16)
-            input = torch.randn(self.dataset_size, input_p, input_f).to(device)
-
-            inputTens = torch.randn(16,input_p,input_f)
-            MLP_arch = self.make_mlp(mlp_hidden_sizes, inputTens)
-            
-            score_testedArch, score_MLP, testedArch_penalty, MLP_penalty = self.get_scores(architecture, MLP_arch, input, get_penalties=True)
-            print(f"Tested Arch penalty: {testedArch_penalty}, MLP penalty: {MLP_penalty}")
-            scores.append((score_testedArch, score_MLP))
-        
-        n_wins = 0
-        for score in scores:
-            if score[0] > score[1]:
-                n_wins += 1
-        return scores, n_wins/mlp_n_tests
 
     def _load_real_datasets(self):
         """Load and cache all real datasets once."""

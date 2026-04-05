@@ -149,7 +149,7 @@ async def tournament_ws(websocket: WebSocket):
     n_random        = data.get("n_random", 8)
     loaded_arch_ids = data.get("loaded_arch_ids", [])
 
-    # ── build architecture pool ──
+    #  build architecture pool 
     architectures = []
     arch_info     = []
 
@@ -164,7 +164,7 @@ async def tournament_ws(websocket: WebSocket):
             "name": f"Random {i}", "source": "random",
         })
 
-    # ── load uploaded architectures from arch_store ──
+    #  load uploaded architectures from arch_store 
     for entry in loaded_arch_ids:
         aid  = entry.get("arch_id", "")
         name = entry.get("name", aid[:8])
@@ -195,7 +195,7 @@ async def tournament_ws(websocket: WebSocket):
         await websocket.send_json({"type": "done", "final_scores": []})
         return
 
-    # ── everything below stays exactly the same ──
+    #  everything below stays exactly the same 
     raw_learn_sum = [0.0] * n_archs
     raw_speed_sum = [0.0] * n_archs
     raw_time_sum  = [0.0] * n_archs

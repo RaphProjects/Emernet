@@ -15,7 +15,6 @@ from modules.softmax import *
 from modules.memory import *
 class Generator:
     def __init__(self, generation_type = "agnostic"):
-        # self.architecture = Architecture()
         self.generation_type = generation_type
         self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
                                    Split, Pooling, Transpose,SoftMax, Shift, Accumulator, EMA]
@@ -24,7 +23,7 @@ class Generator:
         """
         Tests if the architecture is functionally non-linear using the Midpoint Test.
         """
-        # 1. Dummy forward pass to initialize lazy layers BEFORE randomizing!
+        # Dummy forward pass to initialize lazy layers BEFORE randomizing!
         dummy_input = torch.randn(1, *shape)
         with torch.no_grad():
             executor.forward(dummy_input)
@@ -35,20 +34,20 @@ class Generator:
         x2 = torch.randn(1, *shape)
         x_mid = (x1 + x2) / 2.0
 
-        # 2. Batch them for a single, fast forward pass
+        # Batch them for a single, fast forward pass
         x_batch = torch.cat([x1, x2, x_mid], dim=0)
         
         with torch.no_grad():
             out = executor.forward(x_batch)
         
-        # 3. Extract the tensor from the list returned by Executor
+        # Extract the tensor from the list returned by Executor
         out_tensor = out[0] 
         
         # Now we can safely index the batch dimension
         expected_linear_mid = (out_tensor[0] + out_tensor[1]) / 2.0
         actual_mid = out_tensor[2]
         
-        # 4. Calculate the deviation from perfect linearity
+        # Calculate the deviation from perfect linearity
         deviation = torch.abs(actual_mid - expected_linear_mid).mean().item()
         
 
