@@ -81,64 +81,6 @@ class Executor(torch.nn.Module):
         return input_p_adapted_t
 
 
-
-    def forward_recursive(self, input : torch.Tensor, current_node = None, cache_dict = None, verbose=False, adapting = False):
-        """
-            returns the output of the current node
-        """
-        if cache_dict == None:
-            cache_dict = {}
-        
-        if current_node == None:
-            current_node = self.output_node
-
-
-        # get the direct predecessors
-        direct_predecessors = sorted(list(self.architecture.predecessors(current_node)))
-
-        if len(direct_predecessors) == 0: # source node case
-            if self.architecture.nodes[current_node]['module'].mapping_type == MappingType.SOURCE:
-                if self.architecture.nodes[current_node]['module'].module_type == ModuleType.INPUT: # input node case
-                    self.architecture.nodes[current_node]['module'].set_data(input)
-                
-                raw_outputs = self.architecture.nodes[current_node]['module'].forward()
-                if verbose:
-                    print(f"Node {current_node} is a source node, output shape is {raw_outputs[0].shape}")
-            
-            else: # ERROR non-source node with no direct predecessors
-                raise Exception(f"The node {current_node} is not a source, but has no direct predecessors")
-
-        else: # not a source node
-            input_tensors = []
-            for predecessor in direct_predecessors:
-                if predecessor not in cache_dict:
-                    cache_dict[predecessor] = self.forward(input=input, current_node=predecessor, cache_dict=cache_dict, verbose=verbose) # recursive call
-                input_tensors.extend(cache_dict[predecessor])
-
-            raw_outputs =  self.architecture.nodes[current_node]['module'].forward(input_tensors)
-            if verbose:
-                print(f"Node {current_node} is not a source node, output shape is {raw_outputs[0].shape}")
-
-        # if this is the output node, we need to adapt the output to match the target shape
-        # this applies regardless of whether the output node is a source node or not
-        if current_node == self.output_node:
-
-            if adapting:# This means we are being called from the set_Output_Adapter method, we need to return the raw outputs
-                return raw_outputs
-        
-            if not self.adapter:                          
-                # Forward is called without having set the output adapter (forwarding without fitting)
-                best_tensor, best_index = self.pick_output(raw_outputs) # pick_output will handle selecting the biggest batch size
-                self.output_index = best_index
-                return [best_tensor]
-            
-            # here we are not adapting nor forwarding without adapting : we are fitting
-            best_output = raw_outputs[self.output_index]
-            adapted_output = self.output_adapter(best_output)
-            return [adapted_output]
-            
-        
-        return raw_outputs # not the output node, just return the raw outputs of this node's module
     
     def forward(self, input : torch.Tensor, verbose=False, adapting = False):
         # get the topological order of the graph
@@ -187,20 +129,11 @@ class Executor(torch.nn.Module):
 
     def fit(self, input, target, verbose=False, lr=0.001, max_iter=600, batch_size=16, patience = 10, min_delta = 1e-7, device = None, cpu = False, max_retries = 3):
         executor = self
-        #executor.set_Output_Adapter(input, target.shape)
-        #output = executor.forward(input)
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() and not cpu else 'cpu')
         executor = executor.to(device)
         
         executor.set_Output_Adapter(input[:batch_size].to(device), target.shape, force=True)
-        '''
-        print(f"adapter flag: {executor.adapter}")
-        print(f"f_proj type: {type(executor.output_f_linproj)}")
-        print(f"f_proj is None: {executor.output_f_linproj is None}")
-        '''
-
-
 
         wait = 0
         stop_training = False
@@ -242,7 +175,7 @@ class Executor(torch.nn.Module):
                         break
                         
                     if output[0].shape != batch_target.shape:
-                        print("\n=== SHAPE MISMATCH DETECTED ===")
+                        print("\n SHAPE MISMATCH DETECTED")
                         print(f"  output shape:  {output[0].shape}")
                         print(f"  target shape:  {batch_target.shape}")
                         print(f"  adapter flag:  {executor.adapter}")
@@ -268,7 +201,6 @@ class Executor(torch.nn.Module):
                     loss = torch.nn.functional.mse_loss(output[0], batch_target)
 
                     if not torch.isfinite(loss):
-                        # print(f"Loss {loss} is not finite, skipping batch")
                         optimizer.zero_grad()
                         nan_detected = True
                         break

@@ -27,6 +27,16 @@ export default function About() {
                 View the project on GitHub
               </a>
             </div>
+            <div style={{ marginTop: '16px' }}>
+              <a
+                href="https://youtu.be/8x_sJtFG7F4"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#60a5fa', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                Presentation video
+              </a>
+            </div>
           </div>
 
           <div style={{ backgroundColor: '#1e293b', padding: '24px', borderRadius: '8px', borderLeft: '4px solid #f59e0b' }}>

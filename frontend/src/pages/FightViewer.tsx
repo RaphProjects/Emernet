@@ -38,7 +38,7 @@ function formatChartData(xCoords: number[], fightSide: FightSide, snapshotIndex:
   }));
 }
 
-/* ── Download helper ─────────────────────────────────────── */
+/*  Download helper  */
 async function downloadArch(archId: string, filename: string) {
   try {
     const res = await fetch(`${API}/api/download_arch/${archId}`);
@@ -103,7 +103,7 @@ function FightChart({ title, fightSide, fightData, snapIdx, isWinner }: {
           </button>
         </div>
 
-        {/* ── Download button (replaces SaveArchButton) ── */}
+        {/*  Download button */}
         <button
           className="btn btn-primary"
           onClick={() => downloadArch(fightSide.arch_id, title.replace(/\s+/g, '_'))}
@@ -157,7 +157,7 @@ export default function FightViewer() {
   const fileInputA = useRef<HTMLInputElement>(null);
   const fileInputB = useRef<HTMLInputElement>(null);
 
-  /* ── Upload a .pkl and get back an arch_id ─────────────── */
+  /*  Upload a .pkl and get back an arch_id  */
   const handleUpload = async (
     file: File,
     setId: (id: string | null) => void,
@@ -193,7 +193,7 @@ export default function FightViewer() {
     setName('');
   };
 
-  /* ── Start fight ───────────────────────────────────────── */
+  /*  Start fight  */
   const handleStartFight = async () => {
     setIsLoading(true);
     setFightData(null);
@@ -218,7 +218,7 @@ export default function FightViewer() {
     }
   };
 
-  /* ── Arch slot UI ──────────────────────────────────────── */
+  /*  Arch slot UI  */
   const ArchSlot = ({ label, name, uploading, inputRef, onUpload, onClear }: {
     label: string;
     name: string;
@@ -321,7 +321,7 @@ export default function FightViewer() {
           </div>
         )}
 
-        {/* ── PCA note ── */}
+        {/*  PCA note  */}
         {fightData && (
           <div style={{
             backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
