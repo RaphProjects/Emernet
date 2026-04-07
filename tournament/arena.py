@@ -862,6 +862,14 @@ class Arena:
         
         min_error_idx = pools_errors.index(min(pools_errors))
         golden_pool = pool_bank[min_error_idx]
+        # save the golden pool
+        save_dir = "golden_pool_archs"
+        os.makedirs(save_dir, exist_ok=True)
+        for i, arch in enumerate(golden_pool):
+            filename = os.path.join(save_dir, f"golden_arch_{i}.pkl")
+            arch.save(filename)
+            if verbose:
+                print(f"Saved {filename}")
         if verbose:
             print("Starting Evalutation of Golden Pool...")
         golden_pool_errors = []
@@ -885,14 +893,7 @@ class Arena:
         if verbose:
             print(f"Average absolute distance of Golden Pool from True Mean on UNSEEN archs: {avg_golden_pool_error:.4f}")
             print(f"Average absolute distance of Random Pools from True Mean on UNSEEN archs: {avg_random_pool_error:.4f}")
-        # save the golden pool
-        save_dir = "golden_pool_archs"
-        os.makedirs(save_dir, exist_ok=True)
-        for i, arch in enumerate(golden_pool):
-            filename = os.path.join(save_dir, f"golden_arch_{i}.pkl")
-            arch.save(filename)
-            if verbose:
-                print(f"Saved {filename}")
+        
         return golden_pool, avg_golden_pool_error, avg_random_pool_error
 
     def find_golden_pool(self, n_pools=20, n_archs=12, n_refs_tests=2, n_tst_pools=6, verbose=False, randomizeHP=True, simp_bal=None):
@@ -1297,7 +1298,7 @@ class Arena:
 
 
     
-    def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=None, real_iter = 150, verbose = True, save_path="correlation_data.csv"):
+    def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=None, real_iter = 150, verbose = True, save_path="correlation_data.csv", use_golden_pool=False):
         # We evaluate every architecture on both the arena and the real data set
         # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
         if simp_bal is None:
