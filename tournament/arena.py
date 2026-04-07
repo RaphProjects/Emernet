@@ -1,5 +1,6 @@
 import copy
 import math
+from pathlib import Path
 from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -772,7 +773,7 @@ class Arena:
         return datasets
     
 
-    def realDataSet_test_cached(self, architecture, datasets, verbose=True, max_iter=100, subsample=5000):
+    def realDataSet_test_cached(self, architecture, datasets, verbose=True, max_iter=100, subsample=6000):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         max_batch_size = 2048 if device.type == 'cuda' else 32
         results = {}
@@ -879,12 +880,28 @@ class Arena:
         # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
         if simp_bal is None:
             simp_bal = self.simp_bal
+
+        # load golden pool if needed
+        if use_golden_pool:
+            golden_pool = []
+            folder = Path("golden_pool_archs")
+
+            if folder.exists():
+                files = sorted(folder.glob("*.pkl"))
+                for file in files[:n_archs_test - 1]:
+                    arch = Architecture.load(file)
+                    golden_pool.append(arch)
         ############################ Arena metrics ############################
         learnabilities = []
         simplicities = []
         occam_scores = []
         generator = Generator(generation_type=self.generation_type)
-        fixed_opponents = [generator.generate(self.architecture_size) for _ in range(n_archs_test - 1)]
+        opponents = [generator.generate(self.architecture_size) for _ in range(n_archs_test - 1)]
+        if use_golden_pool:
+            fixed_opponents = golden_pool + opponents
+        else:
+            fixed_opponents = opponents
+        
         n_opp = len(fixed_opponents)
 
         # Precompute opponent-vs-opponent scores
@@ -1005,8 +1022,6 @@ class Arena:
         if verbose:
             print(f"Saved {len(rows)} rows to {save_path}")
 
-
-        
         return correlations
     
     def corr_data_processing(self, save_path="correlation_data.csv"):
