@@ -207,12 +207,4 @@ def test_fight_viz():
     
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-MLP1 = arena.make_mlp([32,16,8])
-arena_winner_8_arch = Architecture.load("arena_winner_8_arch.json")
-arena_winner_20_arch = Architecture.load("arena_winner_20_arch.json")
-architectures = [MLP1, arena_winner_8_arch, arena_winner_20_arch]
-generator = Generator(generation_type="agnostic")
-additional_architectures = [generator.generate(12) for _ in range(27)]
-architectures.extend(additional_architectures)
-
-arena.test_real_correlation(architectures,n_archs_test=16,simp_bal=None, real_iter = 150, verbose = True, save_path="correlation_data.csv", use_golden_pool=False)
+arena.fast_find_golden_pool(n_pools=8,pool_size=9, n_archs=8, n_refs_tests=2, n_tst_pools=4, verbose=True, randomizeHP=True, simp_bal=0)
