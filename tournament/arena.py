@@ -354,6 +354,7 @@ class Arena:
         pareto_archs = []
         fight_cache = {}
         for round in range(n_rounds):
+            
             architectures = list(pareto_archs)
             while len(architectures) < n_archs:
                 architectures.append(generator.generate(self.architecture_size))
@@ -364,6 +365,7 @@ class Arena:
             n_fights = 0
             total_pairs =  n_archs * (n_archs - 1) // 2
             round_score_cache = {}
+            scores_matrix = [[0 for _ in range(n_archs)] for _ in range(n_archs)]
             for i in range(n_archs):
                 for j in range(i + 1, n_archs):
 
@@ -379,6 +381,10 @@ class Arena:
                         architectures[i], architectures[j], randomizeHP=randomizeHP, pcp=0
                         )
                     round_score_cache[(i,j)] = (score_i, score_j)
+                    
+                    scores_matrix[i][j] = ((score_i/(n_archs-1))-self.avg_learn)/self.std_learn # score of i learning j
+                    scores_matrix[j][i] = ((score_j/(n_archs-1))-self.avg_learn)/self.std_learn # score of j learning i
+
                     learnability_scores[i] += math.log((max(score_i,1e-10)))
                     learnability_scores[j] += math.log((max(score_j,1e-10)))
                     simplicity_scores[i] += math.log((max(score_j,1e-10)))
@@ -420,8 +426,13 @@ class Arena:
                 for j in range(i + 1, len(pareto_archs)):
                     fight_cache[(i,j)] = round_score_cache[(pareto_archs_idx[i], pareto_archs_idx[j])]
 
+            for i in range(len(scores_matrix)):
+                for j in range(len(scores_matrix[i])):
+                    scores_matrix[i][j] = scores_matrix[i][j]
+
+
+            # end of round
             
-        
         
         learnability_scores = [score/(n_archs-1) for score in learnability_scores]
         simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
