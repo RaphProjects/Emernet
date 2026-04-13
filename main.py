@@ -207,4 +207,4 @@ def test_fight_viz():
     
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
-arena.fast_find_golden_pool(n_pools=8,pool_size=9, n_archs=8, n_refs_tests=2, n_tst_pools=4, verbose=True, randomizeHP=True, simp_bal=0)
+print(arena.tune_simp_opp_bal(n_archs=12, n_rounds=10, verbose=True, randomizeHP=True))

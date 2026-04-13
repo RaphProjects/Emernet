@@ -28,7 +28,7 @@ from graph.generator import *
 class Arena:
     def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64,
                   train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=0.38,
-                    cpu=False, simp_bal=0.36, speed_bal=0.3):
+                    cpu=False, simp_bal=0.36, speed_bal=0.3, simp_opp_bal=0.3):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
@@ -46,8 +46,11 @@ class Arena:
         self.std_learn = 0.7371 # estimated over 340 runs, error +- 0.0067
         self.avg_speed = -1.8779 # estimated over 340 runs, error +- 0.0093
         self.std_speed = 1.3691 # estimated over 340 runs, error +- 0.0124
+        self.avg_simp = self.avg_learn   # exact
+        self.std_simp = self.std_learn   # approximation, close enough in practice
+        
         self.speed_bal = speed_bal
-
+        self.simp_opp_bal = simp_opp_bal
 
     def _valid(self, *values, min_val=1e-10):
         return all(math.isfinite(v) and v > min_val for v in values)
@@ -303,7 +306,6 @@ class Arena:
                     speeds[j]+= math.log(max(1/delay_j,1e-10))
                 if verbose:
                     print(f"score_{i} : {math.log((max(score_i,1e-10)))}, score_{j} : {math.log((max(score_j,1e-10)))}")
-
                 n_fight += 1
         learnabilities = [score/(n_archs-1) for score in learnabilities]
         simplicities = [score/(n_archs-1) for score in simplicities]
@@ -426,11 +428,6 @@ class Arena:
                 for j in range(i + 1, len(pareto_archs)):
                     fight_cache[(i,j)] = round_score_cache[(pareto_archs_idx[i], pareto_archs_idx[j])]
 
-            for i in range(len(scores_matrix)):
-                for j in range(len(scores_matrix[i])):
-                    scores_matrix[i][j] = scores_matrix[i][j]
-
-
             # end of round
             
         
@@ -448,6 +445,185 @@ class Arena:
 
 
         return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, simplicity_scores
+        
+    
+    def simp_bal_opp_selection(self, n_archs=16, verbose=False, randomizeHP=True, simp_bal=None, simp_opp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
+        if simp_opp_bal is None:
+            simp_opp_bal = self.simp_opp_bal
+        generator = Generator(generation_type=self.generation_type)
+        architectures = [generator.generate(self.architecture_size) for _ in range(n_archs)]
+        scores_matrix = [[0 for _ in range(n_archs)] for _ in range(n_archs)]
+        speeds = [0 for _ in range(n_archs)]
+        n_pairs = n_archs * (n_archs - 1) // 2
+        n_fights = 0
+        for i in range(n_archs):
+            for j in range(i + 1, n_archs):
+                if verbose:
+                    n_fights += 1
+                    print(f"Fight {n_fights}/{n_pairs}: ...")
+                score_i, score_j, delay_i, delay_j = self.get_scores(
+                    architectures[i], architectures[j], randomizeHP=randomizeHP, pcp=0, get_delays=True
+                )
+                scores_matrix[i][j] = math.log(max(score_i, 1e-10))
+                scores_matrix[j][i] = math.log(max(score_j, 1e-10))
+                
+                speeds[i]+= math.log(max(1/delay_i,1e-10))
+                speeds[j]+= math.log(max(1/delay_j,1e-10))
+                
+                  
+        speeds = [s / (n_archs-1) for s in speeds]
+        for i in range(n_archs):
+            speeds[i]=(speeds[i] - self.avg_speed)/self.std_speed
+
+        simplicities = [0 for _ in range(n_archs)]
+        for i in range(len(scores_matrix)):
+            for j in range(len(scores_matrix[i])):
+                simplicities[i] += scores_matrix[j][i]
+    
+        ################### Temporary normalization ###################
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
+        
+        simplicities = [s / (n_archs-1) for s in simplicities]
+        simplicities = z_normalize(simplicities)
+        
+        ################### END Temporary normalization ###################
+        scores_matrix_weighted = copy.deepcopy(scores_matrix)
+        for i in range(n_archs):
+            for j in range(n_archs):
+                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + simplicities[j] * simp_opp_bal)
+
+        learnabilities = [0 for _ in range(n_archs)]
+        for i in range(n_archs):
+            for j in range(n_archs):
+                learnabilities[i] += scores_matrix_weighted[i][j]
+
+        norm_learn = [l / (n_archs-1) for l in learnabilities]
+
+        for i in range(n_archs):
+            norm_learn[i]=(norm_learn[i] - self.avg_learn)/self.std_learn
+        speed_bal = self.speed_bal
+        occam_scores = [((norm_learn[i]*(1-speed_bal)) + (speeds[i]*(speed_bal)))
+                         for i in range(n_archs)]
+        
+        max_score_idx = occam_scores.index(max(occam_scores))
+
+        if verbose:
+            print(f"average learnability score: {sum(norm_learn)/len(norm_learn)}")
+            print(f"average speed score: {sum(speeds)/len(speeds)}")
+
+        return architectures[max_score_idx], occam_scores, max_score_idx, learnabilities, speeds
+    
+
+    def simp_bal_opp_test(self, archs, n_archs=16, verbose=False, randomizeHP=True, simp_bal=None, simp_opp_bal=None):
+        if simp_bal is None:
+            simp_bal = self.simp_bal
+        if simp_opp_bal is None:
+            simp_opp_bal = self.simp_opp_bal
+        scores_matrix = [[0 for _ in range(n_archs)] for _ in range(n_archs)]
+        speeds = [0 for _ in range(n_archs)]
+        n_pairs = n_archs * (n_archs - 1) // 2
+        n_fights = 0
+        generator = Generator(generation_type=self.generation_type)
+        architectures = copy.deepcopy(archs)
+        while len(architectures) < n_archs:
+            architectures.append(generator.generate(self.architecture_size))
+        
+        for i in range(n_archs):
+            for j in range(i + 1, n_archs):
+                if verbose:
+                    n_fights += 1
+                    print(f"Fight {n_fights}/{n_pairs}: ...")
+                score_i, score_j, delay_i, delay_j = self.get_scores(
+                    architectures[i], architectures[j], randomizeHP=randomizeHP, pcp=0, get_delays=True
+                )
+                scores_matrix[i][j] = math.log(max(score_i, 1e-10))
+                scores_matrix[j][i] = math.log(max(score_j, 1e-10))
+                
+                speeds[i]+= math.log(max(1/delay_i,1e-10))
+                speeds[j]+= math.log(max(1/delay_j,1e-10))
+            
+        speeds = [s / (n_archs-1) for s in speeds]
+        for i in range(n_archs):
+            speeds[i]=(speeds[i] - self.avg_speed)/self.std_speed
+
+        simplicities = [0 for _ in range(n_archs)]
+        for i in range(len(scores_matrix)):
+            for j in range(len(scores_matrix[i])):
+                simplicities[i] += scores_matrix[j][i]
+    
+        ################### Temporary normalization ###################
+        def z_normalize(values):
+            mu = sum(values) / len(values)
+            var = sum((v - mu) ** 2 for v in values) / len(values)
+            sigma = math.sqrt(var) if var > 0 else 1.0
+            return [(v - mu) / sigma for v in values]
+        
+        simplicities = [s / (n_archs-1) for s in simplicities]
+        simplicities = z_normalize(simplicities)
+        
+        ################### END Temporary normalization ###################
+        scores_matrix_weighted = copy.deepcopy(scores_matrix)
+        for i in range(n_archs):
+            for j in range(n_archs):
+                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + simplicities[j] * simp_opp_bal)
+
+        learnabilities = [0 for _ in range(n_archs)]
+        for i in range(n_archs):
+            for j in range(n_archs):
+                learnabilities[i] += scores_matrix_weighted[i][j]
+
+        norm_learn = [l / (n_archs-1) for l in learnabilities]
+
+        for i in range(n_archs):
+            norm_learn[i]=(norm_learn[i] - self.avg_learn)/self.std_learn
+        speed_bal = self.speed_bal
+        occam_scores = [((norm_learn[i]*(1-speed_bal)) + (speeds[i]*(speed_bal)))
+                         for i in range(n_archs)]
+        
+        max_score_idx = occam_scores.index(max(occam_scores))
+
+        if verbose:
+            print(f"average learnability score: {sum(norm_learn)/len(norm_learn)}")
+            print(f"average speed score: {sum(speeds)/len(speeds)}")
+
+        return occam_scores, learnabilities, speeds, simplicities
+
+    def tune_simp_opp_bal(self, n_archs=12, n_rounds=4, verbose=True, randomizeHP=True):
+        small_mlp = self.make_mlp(hidden_sizes=[8,16])
+        large_mlp = self.make_mlp(hidden_sizes=[32,64,32])
+        simp_opp_bal_value = 0.3
+        step = 0.2
+        decay = 1.5
+        for round in range(n_rounds):
+            occam_scores, learnabilities, speeds, simplicities = self.simp_bal_opp_test(
+                [small_mlp, large_mlp], n_archs=n_archs, verbose=False, randomizeHP=randomizeHP, simp_bal=0, simp_opp_bal=simp_opp_bal_value
+            )
+            if occam_scores[0] > occam_scores[1]:
+                simp_opp_bal_value += step
+            else:
+                simp_opp_bal_value -= step
+
+            if simp_opp_bal_value > 1:
+                simp_opp_bal_value = 1
+                print(f"Warning : clipping balance to 1")
+            if simp_opp_bal_value < 0:
+                simp_opp_bal_value = 0
+                print(f"Warning : clipping balance to 0")
+
+            step /= decay
+            if verbose:
+                print(f"Small - large score: {occam_scores[0] - occam_scores[1]}")
+                print(f"simp_opp_bal_value: {simp_opp_bal_value}")
+        if verbose:
+            print(f"Final simp_opp_bal_value: {simp_opp_bal_value}")
+        return simp_opp_bal_value
+        
         
     
     def tune_speed_bal(self, n_archs=12, n_rounds=4, verbose=False, randomizeHP=True, use_MLPs=True):     
@@ -1015,8 +1191,6 @@ class Arena:
         if verbose:
             print(f"Saved {len(rows)} rows to {save_path}")
 
-
-        
         return correlations
     
     def corr_data_processing(self, save_path="correlation_data.csv"):
