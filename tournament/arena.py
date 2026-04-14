@@ -190,7 +190,7 @@ class Arena:
                 return score_1,score_2,l1_delay,l2_delay
             return score_1, score_2
 
-    def occam_selection(self, n_archs=16, verbose=False, randomizeHP=True, use_delays=True, use_cached_norm=True,
+    def occam_selection(self, n_archs=16, verbose=False, randomizeHP=True, use_delays=True,
                         simp_bal=None, speed_bal=None):
         if simp_bal is None:
             simp_bal = self.simp_bal
@@ -232,21 +232,13 @@ class Arena:
                 n_fights += 1
 
 
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
-        
         learnability_scores = [score/(n_archs-1) for score in learnability_scores]
         simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
         speed_scores = [score/(n_archs-1) for score in speed_scores]
-        if use_cached_norm : 
-            norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnability_scores]
-            norm_speed = [(s - self.avg_speed) / self.std_speed for s in speed_scores]
-        else : 
-            norm_learn = z_normalize(learnability_scores)
-        norm_simp = z_normalize(simplicity_scores)
+        
+        norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnability_scores]
+        norm_speed = [(s - self.avg_speed) / self.std_speed for s in speed_scores]
+        norm_simp = [(s - self.avg_learn) / self.std_learn for s in simplicity_scores]
 
         if use_delays: 
             occam_scores = [((norm_learn[i]*(1-speed_bal)) + (norm_speed[i]*(speed_bal)))
@@ -264,7 +256,7 @@ class Arena:
         return architectures[max_score_idx], occam_scores, max_score_idx, learnability_scores, simplicity_scores
         
     def occam_test(self, ori_architectures, n_archs=8, verbose=False, randomizeHP=True,
-                    simp_bal=None, use_cached_norm=True, use_delays=True, speed_bal = None):
+                    simp_bal=None, use_delays=True, speed_bal = None):
         if simp_bal is None:
             simp_bal = self.simp_bal
         if speed_bal is None:
@@ -311,20 +303,9 @@ class Arena:
         simplicities = [score/(n_archs-1) for score in simplicities]
         speeds = [score/(n_archs-1) for score in speeds]
 
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
-
-
-        if use_cached_norm:
-            norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnabilities]
-            norm_speed = [(s - self.avg_speed) / self.std_speed for s in speeds]
-        else : 
-            norm_learn = z_normalize(learnabilities)
-        norm_simp = z_normalize(simplicities)
-
+        norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnabilities]
+        norm_speed = [(s - self.avg_speed) / self.std_speed for s in speeds]
+        norm_simp = [(s - self.avg_learn) / self.std_learn for s in simplicities]
 
         if use_delays: 
             occam_scores = [((norm_learn[i]*(1-speed_bal)) + (norm_speed[i]*(speed_bal)))
@@ -347,11 +328,6 @@ class Arena:
         if simp_bal is None:
             simp_bal = self.simp_bal
         generator = Generator(generation_type=self.generation_type)
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
         
         pareto_archs = []
         fight_cache = {}
@@ -411,8 +387,8 @@ class Arena:
                     
             # if no arch is dominated, we pop the arch with the worst score
             if len(pareto_archs) == n_archs:
-                norm_learn = z_normalize(learnability_scores)
-                norm_simp = z_normalize(simplicity_scores)
+                norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnability_scores]
+                norm_simp = [(s - self.avg_learn) / self.std_learn for s in simplicity_scores]
                 occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal))) for i in range(n_archs)]
                 min_score_idx = occam_scores.index(min(occam_scores))
                 # get the index of the min score in the pareto list using pareto_archs_idx
@@ -433,8 +409,8 @@ class Arena:
         
         learnability_scores = [score/(n_archs-1) for score in learnability_scores]
         simplicity_scores = [score/(n_archs-1) for score in simplicity_scores]
-        norm_learn = z_normalize(learnability_scores)
-        norm_simp = z_normalize(simplicity_scores)
+        norm_learn = [(l - self.avg_learn) / self.std_learn for l in learnability_scores]
+        norm_simp = [(s - self.avg_learn) / self.std_learn for s in simplicity_scores]
         occam_scores = [((norm_learn[i]*(1-simp_bal)) + (norm_simp[i]*(simp_bal)))
                          for i in range(n_archs)]
         max_score_idx = occam_scores.index(max(occam_scores))
@@ -482,17 +458,9 @@ class Arena:
             for j in range(len(scores_matrix[i])):
                 simplicities[i] += scores_matrix[j][i]
     
-        ################### Temporary normalization ###################
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
-        
         simplicities = [s / (n_archs-1) for s in simplicities]
-        simplicities = z_normalize(simplicities)
+        simplicities = [(s - self.avg_learn) / self.std_learn for s in simplicities]
         
-        ################### END Temporary normalization ###################
         scores_matrix_weighted = copy.deepcopy(scores_matrix)
         for i in range(n_archs):
             for j in range(n_archs):
@@ -557,17 +525,9 @@ class Arena:
             for j in range(len(scores_matrix[i])):
                 simplicities[i] += scores_matrix[j][i]
     
-        ################### Temporary normalization ###################
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
-        
         simplicities = [s / (n_archs-1) for s in simplicities]
-        simplicities = z_normalize(simplicities)
+        simplicities = [(s - self.avg_learn) / self.std_learn for s in simplicities]
         
-        ################### END Temporary normalization ###################
         scores_matrix_weighted = copy.deepcopy(scores_matrix)
         for i in range(n_archs):
             for j in range(n_archs):
@@ -594,35 +554,102 @@ class Arena:
 
         return occam_scores, learnabilities, speeds, simplicities
 
-    def tune_simp_opp_bal(self, n_archs=12, n_rounds=4, verbose=True, randomizeHP=True):
-        small_mlp = self.make_mlp(hidden_sizes=[8,16])
-        large_mlp = self.make_mlp(hidden_sizes=[32,64,32])
-        simp_opp_bal_value = 0.3
-        step = 0.2
-        decay = 1.5
-        for round in range(n_rounds):
-            occam_scores, learnabilities, speeds, simplicities = self.simp_bal_opp_test(
-                [small_mlp, large_mlp], n_archs=n_archs, verbose=False, randomizeHP=randomizeHP, simp_bal=0, simp_opp_bal=simp_opp_bal_value
-            )
-            if occam_scores[0] > occam_scores[1]:
-                simp_opp_bal_value -= step
+    def tune_simp_opp_bal(self, n_archs=16, verbose=True, randomizeHP=True, n_rounds=3):
+
+        small_mlp = self.make_mlp(hidden_sizes=[8, 16])
+        large_mlp = self.make_mlp(hidden_sizes=[32, 64, 32])
+        speed_bal = self.speed_bal
+
+        results = []
+        for r in range(n_rounds):
+            generator = Generator(generation_type=self.generation_type)
+            architectures = [copy.deepcopy(small_mlp), copy.deepcopy(large_mlp)]
+            while len(architectures) < n_archs:
+                architectures.append(generator.generate(self.architecture_size))
+
+            # Run the tournament (identical to simp_bal_opp_test) 
+            scores_matrix = [[0 for _ in range(n_archs)] for _ in range(n_archs)]
+            speeds = [0 for _ in range(n_archs)]
+            n_pairs = n_archs * (n_archs - 1) // 2
+            n_fights = 0
+            for i in range(n_archs):
+                for j in range(i + 1, n_archs):
+                    n_fights += 1
+                    if verbose:
+                        print(f"Round {r+1}/{n_rounds} - Fight {n_fights}/{n_pairs}")
+                    score_i, score_j, delay_i, delay_j = self.get_scores(
+                        architectures[i], architectures[j],
+                        randomizeHP=randomizeHP, pcp=0, get_delays=True
+                    )
+                    scores_matrix[i][j] = math.log(max(score_i, 1e-10))
+                    scores_matrix[j][i] = math.log(max(score_j, 1e-10))
+                    speeds[i] += math.log(max(1 / delay_i, 1e-10))
+                    speeds[j] += math.log(max(1 / delay_j, 1e-10))
+
+            # Normalize speeds 
+            speeds = [s / (n_archs - 1) for s in speeds]
+            for i in range(n_archs):
+                speeds[i] = (speeds[i] - self.avg_speed) / self.std_speed
+
+            #  Compute simplicities (column sums, averaged, normalized) 
+            simplicities = [0 for _ in range(n_archs)]
+            for i in range(n_archs):
+                for j in range(n_archs):
+                    simplicities[i] += scores_matrix[j][i]
+            simplicities = [s / (n_archs - 1) for s in simplicities]
+            simplicities = [(s - self.avg_learn) / self.std_learn for s in simplicities]
+
+            # Compute base_i and bonus_i for each arch 
+            # learnability_i(α) = base_i + α * bonus_i
+            # where base_i = Σⱼ M[i][j], bonus_i = Σⱼ M[i][j] * tanh(S[j])
+            tanh_s = [math.tanh(s) for s in simplicities]
+
+            bases = [0.0 for _ in range(n_archs)]
+            bonuses = [0.0 for _ in range(n_archs)]
+            for i in range(n_archs):
+                for j in range(n_archs):
+                    bases[i] += scores_matrix[i][j]
+                    bonuses[i] += scores_matrix[i][j] * tanh_s[j]
+
+            #  Derive occam_score(α) = c_i + α * d_i 
+            # norm_learn_i(α) = ((base_i + α*bonus_i) / (n-1) - avg_learn) / std_learn
+            # occam_i(α)      = norm_learn_i(α) * (1-speed_bal) + speed_i * speed_bal
+            #                 = [(base_i/(n-1) - avg_learn)/std_learn * (1-speed_bal) + speed_i*speed_bal]
+            #                   + α * [bonus_i / ((n-1)*std_learn) * (1-speed_bal)]
+            #                 = c_i + α * d_i
+            n = n_archs
+            c = [0.0 for _ in range(n_archs)]
+            d = [0.0 for _ in range(n_archs)]
+            for i in range(n_archs):
+                norm_base = (bases[i] / (n - 1) - self.avg_learn) / self.std_learn
+                c[i] = norm_base * (1 - speed_bal) + speeds[i] * speed_bal
+                d[i] = (bonuses[i] / ((n - 1) * self.std_learn)) * (1 - speed_bal)
+
+            # Solve for α where occam_small = occam_large 
+            # c[0] + α*d[0] = c[1] + α*d[1]
+            # α = (c[1] - c[0]) / (d[0] - d[1])
+            denominator = d[0] - d[1]
+            if abs(denominator) < 1e-12:
+                alpha = 0.5  # fallback: slopes are identical, no crossover
+                if verbose:
+                    print(f"Round {r+1}: slopes identical, defaulting to 0.5")
             else:
-                simp_opp_bal_value += step
+                alpha = (c[1] - c[0]) / denominator
 
-            if simp_opp_bal_value > 1:
-                simp_opp_bal_value = 1
-                print(f"Warning : clipping balance to 1")
-            if simp_opp_bal_value < 0:
-                simp_opp_bal_value = 0
-                print(f"Warning : clipping balance to 0")
+            # Clip to [0, 1] (tanh guarantees safety within this range)
+            alpha = max(0.0, min(1.0, alpha))
+            results.append(alpha)
 
-            step /= decay
             if verbose:
-                print(f"Small - large score: {occam_scores[0] - occam_scores[1]}")
-                print(f"simp_opp_bal_value: {simp_opp_bal_value}")
+                print(f"Round {r+1}: α = {alpha:.4f}  "
+                      f"(small base={c[0]:.3f}, slope={d[0]:.4f} | "
+                      f"large base={c[1]:.3f}, slope={d[1]:.4f})")
+
+        avg_alpha = sum(results) / len(results)
+        std_alpha = math.sqrt(sum([(r - avg_alpha)**2 for r in results]) / len(results))
         if verbose:
-            print(f"Final simp_opp_bal_value: {simp_opp_bal_value}")
-        return simp_opp_bal_value
+            print(f"\nFinal simp_opp_bal = {avg_alpha:.4f} +/- {std_alpha:.4f}  (from {n_rounds} rounds: {[f'{r:.4f}' for r in results]})")
+        return avg_alpha, std_alpha
         
         
     
@@ -1088,12 +1115,7 @@ class Arena:
         if verbose:
             print("Opponent cache built.")
 
-        # Z-normalize, used later but defined now to avoid recomputing it
-        def z_normalize(values):
-            mu = sum(values) / len(values)
-            var = sum((v - mu) ** 2 for v in values) / len(values)
-            sigma = math.sqrt(var) if var > 0 else 1.0
-            return [(v - mu) / sigma for v in values]
+        # removed z_normalize definition from here since we use self.avg_learn and self.std_learn
 
         for i, arch in enumerate(architectures):
             if verbose:
@@ -1130,8 +1152,8 @@ class Arena:
 
             
 
-            norm_learn = z_normalize(raw_learn)
-            norm_simp = z_normalize(raw_simp)
+            norm_learn = [(l - self.avg_learn) / self.std_learn for l in raw_learn]
+            norm_simp = [(s - self.avg_learn) / self.std_learn for s in raw_simp]
 
             occam = [(1 - simp_bal) * norm_learn[k] + simp_bal * norm_simp[k] for k in range(pool_size)]
 
