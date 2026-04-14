@@ -496,7 +496,7 @@ class Arena:
         scores_matrix_weighted = copy.deepcopy(scores_matrix)
         for i in range(n_archs):
             for j in range(n_archs):
-                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + simplicities[j] * simp_opp_bal)
+                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + math.tanh(simplicities[j]) * simp_opp_bal)
 
         learnabilities = [0 for _ in range(n_archs)]
         for i in range(n_archs):
@@ -571,7 +571,7 @@ class Arena:
         scores_matrix_weighted = copy.deepcopy(scores_matrix)
         for i in range(n_archs):
             for j in range(n_archs):
-                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + simplicities[j] * simp_opp_bal)
+                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + math.tanh(simplicities[j])* simp_opp_bal)
 
         learnabilities = [0 for _ in range(n_archs)]
         for i in range(n_archs):
@@ -605,9 +605,9 @@ class Arena:
                 [small_mlp, large_mlp], n_archs=n_archs, verbose=False, randomizeHP=randomizeHP, simp_bal=0, simp_opp_bal=simp_opp_bal_value
             )
             if occam_scores[0] > occam_scores[1]:
-                simp_opp_bal_value += step
-            else:
                 simp_opp_bal_value -= step
+            else:
+                simp_opp_bal_value += step
 
             if simp_opp_bal_value > 1:
                 simp_opp_bal_value = 1
