@@ -1087,11 +1087,13 @@ class Arena:
 
 
     
-    def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=None, real_iter = 150, verbose = True, save_path="correlation_data.csv"):
+    def test_real_correlation(self,architectures,n_archs_test=16,simp_bal=None, simp_opp_bal=None, real_iter = 150, verbose = True, save_path="correlation_data.csv", useSimpBalOpp = True):
         # We evaluate every architecture on both the arena and the real data set
         # We compute the correlation between the architectures' scores on the real data set and the scores on the arena
         if simp_bal is None:
             simp_bal = self.simp_bal
+        if simp_opp_bal is None:
+            simp_opp_bal = self.simp_opp_bal
         ############################ Arena metrics ############################
         learnabilities = []
         simplicities = []
@@ -1115,51 +1117,124 @@ class Arena:
         if verbose:
             print("Opponent cache built.")
 
-        # removed z_normalize definition from here since we use self.avg_learn and self.std_learn
+        if useSimpBalOpp:
+            speeds = [0.0] * len(architectures)
 
-        for i, arch in enumerate(architectures):
-            if verbose:
-                print(f"arena-Testing architecture {i+1}/{len(architectures)}")
-            tested_learn_scores = []
-            tested_simp_scores = []
-            for j in range(n_opp):
-                score_tested, score_opp = self.get_scores(arch, fixed_opponents[j], randomizeHP=False, pcp=0)
-                tested_learn_scores.append(math.log(max(score_tested, 1e-10)))
-                tested_simp_scores.append(math.log(max(score_opp, 1e-10)))
+            # tested_row[ntested][j] = log score of tested arch learning opp j  (row 0, cols 1..n_opp)
+            # tested_col[ntested][j] = log score of opp j learning tested arch  (col 0, rows 1..n_opp)
+            tested_row = [[0.0]*n_opp for _ in range(len(architectures))]
+            tested_col = [[0.0]*n_opp for _ in range(len(architectures))]
 
-            pool_size = n_opp + 1  # should equal n_archs_test
+            for ntested_arch in range(len(architectures)):
+                if verbose:
+                    print(f"Testing architecture {ntested_arch+1}/{len(architectures)}")
+                for j in range(n_opp):
+                    score_i, score_j, delay_i, delay_j = self.get_scores(
+                        architectures[ntested_arch], fixed_opponents[j],
+                        randomizeHP=False, pcp=0, get_delays=True
+                    )
+                    tested_row[ntested_arch][j] = math.log(max(score_i, 1e-10))
+                    tested_col[ntested_arch][j] = math.log(max(score_j, 1e-10))
+                    speeds[ntested_arch] += math.log(max(1.0/delay_i, 1e-10))
 
-            raw_learn = [0.0] * pool_size
-            raw_simp = [0.0] * pool_size
+            speeds = [(s/n_opp - self.avg_speed)/self.std_speed for s in speeds]
 
-            for j in range(n_opp):
-                raw_learn[0] += tested_learn_scores[j]       # tested learned opp_j
-                raw_simp[0] += tested_simp_scores[j]         # opp_j learned tested
-                raw_learn[j + 1] += tested_simp_scores[j]    # opp_j learned tested
-                raw_simp[j + 1] += tested_learn_scores[j]    # tested learned opp_j
+            # Simplicity of each entity in the pool (shared across all rounds)
+            # simplicity[0]   = how well others learn the tested arch = mean of tested_col
+            # simplicity[j+1] = how well others learn opp j
 
-            # Opponent vs opponent (cached)
-            for a in range(n_opp):
-                for b in range(a + 1, n_opp):
-                    raw_learn[a + 1] += opp_log_scores[a][b]
-                    raw_learn[b + 1] += opp_log_scores[b][a]
-                    raw_simp[a + 1] += opp_log_scores[b][a]
-                    raw_simp[b + 1] += opp_log_scores[a][b]
+            original_learns = []
+            norm_learns     = []
+            occam_scores    = []
+            arch_simplicities = []
 
-            # Normalize by number of opponents
-            raw_learn = [s / (pool_size - 1) for s in raw_learn]
-            raw_simp = [s / (pool_size - 1) for s in raw_simp]
+            for ntested_arch in range(len(architectures)):
+                # Simplicity of tested arch (index 0): mean of tested_col
+                simp_tested = sum(tested_col[ntested_arch]) / n_opp
+                simp_tested_z = (simp_tested - self.avg_learn) / self.std_learn
 
-            
+                # Simplicity of each opponent j (index j+1):
+                # others who learn opp j = tested arch + all other opps
+                simp_opps = []
+                for j in range(n_opp):
+                    # tested arch learning opp j = tested_row[ntested_arch][j]
+                    # other opps learning opp j = opp_log_scores[k][j] for k != j
+                    s = tested_row[ntested_arch][j] + sum(
+                        opp_log_scores[k][j] for k in range(n_opp) if k != j
+                    )
+                    s /= n_opp  # n_opp learners total (tested + n_opp-1 other opps)
+                    simp_opps.append((s - self.avg_learn) / self.std_learn)
 
-            norm_learn = [(l - self.avg_learn) / self.std_learn for l in raw_learn]
-            norm_simp = [(s - self.avg_learn) / self.std_learn for s in raw_simp]
+                # all simplicities in this round: [tested, opp0, opp1, ...]
+                all_simp = [simp_tested_z] + simp_opps
 
-            occam = [(1 - simp_bal) * norm_learn[k] + simp_bal * norm_simp[k] for k in range(pool_size)]
+                # Unweighted learnability of tested arch
+                raw_learn = sum(tested_row[ntested_arch]) / n_opp
+                learn_z   = (raw_learn - self.avg_learn) / self.std_learn
+                original_learns.append(learn_z)
+                arch_simplicities.append(simp_tested_z)
 
-            learnabilities.append(norm_learn[0])
-            simplicities.append(norm_simp[0])
-            occam_scores.append(occam[0])
+                # Weighted learnability: weight each fight by tanh(simplicity of opponent)
+                weighted_sum = sum(
+                    tested_row[ntested_arch][j] * (1 + math.tanh(all_simp[j+1]) * simp_opp_bal)
+                    for j in range(n_opp)
+                )
+                weighted_learn = weighted_sum / n_opp
+                weighted_learn_z = (weighted_learn - self.avg_learn) / self.std_learn
+                norm_learns.append(weighted_learn_z)
+
+                occam_scores.append(
+                    weighted_learn_z * (1 - self.speed_bal) +
+                    speeds[ntested_arch] * self.speed_bal
+                )
+
+            learnabilities = original_learns
+            simplicities   = arch_simplicities
+
+        else :
+            for i, arch in enumerate(architectures):
+                if verbose:
+                    print(f"arena-Testing architecture {i+1}/{len(architectures)}")
+                tested_learn_scores = []
+                tested_simp_scores = []
+                for j in range(n_opp):
+                    score_tested, score_opp = self.get_scores(arch, fixed_opponents[j], randomizeHP=False, pcp=0)
+                    tested_learn_scores.append(math.log(max(score_tested, 1e-10)))
+                    tested_simp_scores.append(math.log(max(score_opp, 1e-10)))
+
+                pool_size = n_opp + 1  # should equal n_archs_test
+
+                raw_learn = [0.0] * pool_size
+                raw_simp = [0.0] * pool_size
+
+                for j in range(n_opp):
+                    raw_learn[0] += tested_learn_scores[j]       # tested learned opp_j
+                    raw_simp[0] += tested_simp_scores[j]         # opp_j learned tested
+                    raw_learn[j + 1] += tested_simp_scores[j]    # opp_j learned tested
+                    raw_simp[j + 1] += tested_learn_scores[j]    # tested learned opp_j
+
+                # Opponent vs opponent (cached)
+                for a in range(n_opp):
+                    for b in range(a + 1, n_opp):
+                        raw_learn[a + 1] += opp_log_scores[a][b]
+                        raw_learn[b + 1] += opp_log_scores[b][a]
+                        raw_simp[a + 1] += opp_log_scores[b][a]
+                        raw_simp[b + 1] += opp_log_scores[a][b]
+
+                # Normalize by number of opponents
+                raw_learn = [s / (pool_size - 1) for s in raw_learn]
+                raw_simp = [s / (pool_size - 1) for s in raw_simp]
+
+                
+
+                norm_learn = [(l - self.avg_learn) / self.std_learn for l in raw_learn]
+                norm_simp = [(s - self.avg_learn) / self.std_learn for s in raw_simp]
+
+                occam = [(1 - simp_bal) * norm_learn[k] + simp_bal * norm_simp[k] for k in range(pool_size)]
+
+                learnabilities.append(norm_learn[0])
+                simplicities.append(norm_simp[0])
+                occam_scores.append(occam[0])
                 
 
         arena_metrics = {"learnability": learnabilities, "simplicity": simplicities, "occam_score": occam_scores}
@@ -1215,7 +1290,7 @@ class Arena:
 
         return correlations
     
-    def corr_data_processing(self, save_path="correlation_data.csv"):
+    def corr_data_processing(self, save_path="correlation_data.csv", useSimpBalOpp = True):
         rows = []
         with open(save_path, "r") as f:
             reader = csv.DictReader(f)
