@@ -28,7 +28,7 @@ from graph.generator import *
 class Arena:
     def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64,
                   train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=0.38,
-                    cpu=False, simp_bal=0.36, speed_bal=0.3, simp_opp_bal=0.3):
+                    cpu=False, simp_bal=0.36, speed_bal=0.3, simp_opp_bal=0.2293):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
@@ -464,7 +464,7 @@ class Arena:
         scores_matrix_weighted = copy.deepcopy(scores_matrix)
         for i in range(n_archs):
             for j in range(n_archs):
-                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + math.tanh(simplicities[j]) * simp_opp_bal)
+                scores_matrix_weighted[i][j] = scores_matrix[i][j] * math.exp(simplicities[j] * simp_opp_bal)
 
         learnabilities = [0 for _ in range(n_archs)]
         for i in range(n_archs):
@@ -531,7 +531,7 @@ class Arena:
         scores_matrix_weighted = copy.deepcopy(scores_matrix)
         for i in range(n_archs):
             for j in range(n_archs):
-                scores_matrix_weighted[i][j] = scores_matrix[i][j] * (1 + math.tanh(simplicities[j])* simp_opp_bal)
+                scores_matrix_weighted[i][j] = scores_matrix[i][j] * math.exp(simplicities[j]* simp_opp_bal)
 
         learnabilities = [0 for _ in range(n_archs)]
         for i in range(n_archs):
@@ -555,10 +555,8 @@ class Arena:
         return occam_scores, learnabilities, speeds, simplicities
 
     def tune_simp_opp_bal(self, n_archs=16, verbose=True, randomizeHP=True, n_rounds=3):
-
         small_mlp = self.make_mlp(hidden_sizes=[8, 16])
         large_mlp = self.make_mlp(hidden_sizes=[32, 64, 32])
-        speed_bal = self.speed_bal
 
         results = []
         for r in range(n_rounds):
@@ -567,88 +565,95 @@ class Arena:
             while len(architectures) < n_archs:
                 architectures.append(generator.generate(self.architecture_size))
 
-            # Run the tournament (identical to simp_bal_opp_test) 
-            scores_matrix = [[0 for _ in range(n_archs)] for _ in range(n_archs)]
-            speeds = [0 for _ in range(n_archs)]
-            n_pairs = n_archs * (n_archs - 1) // 2
+            # fights 
+            scores_matrix = [[0.0]*n_archs for _ in range(n_archs)]
+            speeds = [0.0]*n_archs
+            n_pairs = n_archs*(n_archs-1)//2
             n_fights = 0
             for i in range(n_archs):
-                for j in range(i + 1, n_archs):
+                for j in range(i+1, n_archs):
                     n_fights += 1
                     if verbose:
                         print(f"Round {r+1}/{n_rounds} - Fight {n_fights}/{n_pairs}")
-                    score_i, score_j, delay_i, delay_j = self.get_scores(
+                    si, sj, di, dj = self.get_scores(
                         architectures[i], architectures[j],
                         randomizeHP=randomizeHP, pcp=0, get_delays=True
                     )
-                    scores_matrix[i][j] = math.log(max(score_i, 1e-10))
-                    scores_matrix[j][i] = math.log(max(score_j, 1e-10))
-                    speeds[i] += math.log(max(1 / delay_i, 1e-10))
-                    speeds[j] += math.log(max(1 / delay_j, 1e-10))
+                    scores_matrix[i][j] = math.log(max(si, 1e-10))
+                    scores_matrix[j][i] = math.log(max(sj, 1e-10))
+                    speeds[i] += math.log(max(1/di, 1e-10))
+                    speeds[j] += math.log(max(1/dj, 1e-10))
 
-            # Normalize speeds 
-            speeds = [s / (n_archs - 1) for s in speeds]
-            for i in range(n_archs):
-                speeds[i] = (speeds[i] - self.avg_speed) / self.std_speed
+            speeds = [(s/(n_archs-1) - self.avg_speed)/self.std_speed for s in speeds]
 
-            #  Compute simplicities (column sums, averaged, normalized) 
-            simplicities = [0 for _ in range(n_archs)]
-            for i in range(n_archs):
-                for j in range(n_archs):
-                    simplicities[i] += scores_matrix[j][i]
-            simplicities = [s / (n_archs - 1) for s in simplicities]
-            simplicities = [(s - self.avg_learn) / self.std_learn for s in simplicities]
+            # simplicities 
+            simp_raw = [
+                sum(scores_matrix[k][j] for k in range(n_archs)) / (n_archs-1)
+                for j in range(n_archs)
+            ]
+            simp_z = [(s - self.avg_learn)/self.std_learn for s in simp_raw]
 
-            # Compute base_i and bonus_i for each arch 
-            # learnability_i(α) = base_i + α * bonus_i
-            # where base_i = Σⱼ M[i][j], bonus_i = Σⱼ M[i][j] * tanh(S[j])
-            tanh_s = [math.tanh(s) for s in simplicities]
+            # analytical coefficients 
+            # w_j = M[0][j] - M[1][j]  (small minus large, for each opponent j)
+            # skip j=0 and j=1 (self-terms)
+            opponents = [j for j in range(n_archs) if j not in (0, 1)]
 
-            bases = [0.0 for _ in range(n_archs)]
-            bonuses = [0.0 for _ in range(n_archs)]
-            for i in range(n_archs):
-                for j in range(n_archs):
-                    bases[i] += scores_matrix[i][j]
-                    bonuses[i] += scores_matrix[i][j] * tanh_s[j]
+            w = [scores_matrix[0][j] - scores_matrix[1][j] for j in opponents]
+            z = [simp_z[j] for j in opponents]
 
-            #  Derive occam_score(α) = c_i + α * d_i 
-            # norm_learn_i(α) = ((base_i + α*bonus_i) / (n-1) - avg_learn) / std_learn
-            # occam_i(α)      = norm_learn_i(α) * (1-speed_bal) + speed_i * speed_bal
-            #                 = [(base_i/(n-1) - avg_learn)/std_learn * (1-speed_bal) + speed_i*speed_bal]
-            #                   + α * [bonus_i / ((n-1)*std_learn) * (1-speed_bal)]
-            #                 = c_i + α * d_i
-            n = n_archs
-            c = [0.0 for _ in range(n_archs)]
-            d = [0.0 for _ in range(n_archs)]
-            for i in range(n_archs):
-                norm_base = (bases[i] / (n - 1) - self.avg_learn) / self.std_learn
-                c[i] = norm_base * (1 - speed_bal) + speeds[i] * speed_bal
-                d[i] = (bonuses[i] / ((n - 1) * self.std_learn)) * (1 - speed_bal)
+            A = sum(w)
+            B = sum(w[k]*z[k] for k in range(len(w)))
+            D = sum(w[k]*z[k]**2 for k in range(len(w)))
 
-            # Solve for α where occam_small = occam_large 
-            # c[0] + α*d[0] = c[1] + α*d[1]
-            # α = (c[1] - c[0]) / (d[0] - d[1])
-            denominator = d[0] - d[1]
-            if abs(denominator) < 1e-12:
-                alpha = 0.5  # fallback: slopes are identical, no crossover
-                if verbose:
-                    print(f"Round {r+1}: slopes identical, defaulting to 0.5")
+            # K and C
+            K = (1 - self.speed_bal) / ((n_archs-1) * self.std_learn)
+            C = self.speed_bal * (speeds[0] - speeds[1])
+
+            # Quadratic: (D/2)*α² + B*α + (A + C/K) = 0
+            a_coef = D / 2
+            b_coef = B
+            c_coef = A + C/K
+
+            if verbose:
+                print(f"Round {r+1}: A={A:.3f} B={B:.3f} D={D:.3f} C={C:.3f} K={K:.6f}")
+
+            if abs(a_coef) < 1e-12:
+                # Degenerate: linear equation B*α + c_coef = 0
+                if abs(b_coef) < 1e-12:
+                    alpha = 0.0
+                else:
+                    alpha = -c_coef / b_coef
             else:
-                alpha = (c[1] - c[0]) / denominator
+                discriminant = b_coef**2 - 4*a_coef*c_coef
+                if discriminant < 0:
+                    # No real root: pick boundary
+                    alpha = 0.0 if (A + C/K) > 0 else 5.0
+                    if verbose:
+                        print(f"  No real root (disc={discriminant:.4f}), using α={alpha}")
+                else:
+                    # Two roots, pick the one in [0, 5] closest to 0
+                    sqrt_disc = math.sqrt(discriminant)
+                    r1 = (-b_coef + sqrt_disc) / (2*a_coef)
+                    r2 = (-b_coef - sqrt_disc) / (2*a_coef)
+                    
+                    candidates = [r for r in (r1, r2) if 0.0 <= r <= 5.0]
+                    if candidates:
+                        alpha = min(candidates)  # prefer smaller α (less aggressive)
+                    else:
+                        # Both roots outside range, pick nearest boundary
+                        alpha = 0.0 if abs(r1) < abs(r2-5.0) else 5.0
 
-            # Clip to [0, 1] (tanh guarantees safety within this range)
-            alpha = max(0.0, min(1.0, alpha))
+            alpha = max(0.0, min(5.0, alpha))
             results.append(alpha)
 
             if verbose:
-                print(f"Round {r+1}: α = {alpha:.4f}  "
-                      f"(small base={c[0]:.3f}, slope={d[0]:.4f} | "
-                      f"large base={c[1]:.3f}, slope={d[1]:.4f})")
+                print(f"  α = {alpha:.4f}  (roots: {r1:.3f}, {r2:.3f})" 
+                    if discriminant >= 0 else f"  α = {alpha:.4f}")
 
-        avg_alpha = sum(results) / len(results)
-        std_alpha = math.sqrt(sum([(r - avg_alpha)**2 for r in results]) / len(results))
+        avg_alpha = sum(results)/len(results)
+        std_alpha = math.sqrt(sum((x-avg_alpha)**2 for x in results)/len(results))
         if verbose:
-            print(f"\nFinal simp_opp_bal = {avg_alpha:.4f} +/- {std_alpha:.4f}  (from {n_rounds} rounds: {[f'{r:.4f}' for r in results]})")
+            print(f"\nFinal simp_opp_bal = {avg_alpha:.4f} ± {std_alpha:.4f}")
         return avg_alpha, std_alpha
         
         
@@ -1174,9 +1179,9 @@ class Arena:
                 original_learns.append(learn_z)
                 arch_simplicities.append(simp_tested_z)
 
-                # Weighted learnability: weight each fight by tanh(simplicity of opponent)
+                # Weighted learnability: weight each fight by exp(simplicity of opponent)
                 weighted_sum = sum(
-                    tested_row[ntested_arch][j] * (1 + math.tanh(all_simp[j+1]) * simp_opp_bal)
+                    tested_row[ntested_arch][j] * math.exp(simp_opp_bal*all_simp[j+1]) 
                     for j in range(n_opp)
                 )
                 weighted_learn = weighted_sum / n_opp
