@@ -16,59 +16,38 @@ class Reindex(Module):
     def __init__(self, name=None):
         # By default, Reindex is a Mapper.
         super().__init__(name, ModuleType.BASIC)
-        self.index_map = None 
-        self.p_out = None
+        self.ps_out = None
         self.n_parameters = 0
+        self.routing_maps = []
 
     def initialize_params(self, input_size):
         """Seed the mapping on the first forward pass based on input shape."""
         if self.input_size is None:
             self.input_size = input_size
 
-    def initialize_routing(self, P_out, p_unique=0.8, p_collision=0.1, p_truncate=0.1):
+    def initialize_routing(self, inputTensors, p_correct=0.5):
         """
-        Hard-codes the routing strategy deterministically.
+        Hard-codes the routing maps deterministically.
         This defines how the graph will behave for its entire lifetime.
         """
-        P_in = self.input_size[1]
+        Ps_in = [t.shape[1] for t in inputTensors]
+        Ps_out = self.ps_out
         
-        # Ensure probabilities sum to 1
-        total = p_unique + p_collision + p_truncate
-        p_unique /= total
-        p_collision /= total
-        p_truncate /= total
 
-        rand_val = random.random()
-
-        if rand_val < p_unique:     # 80% - Unique Mapping
-            self._initialize_unique_map(P_in, P_out)
-        elif rand_val < p_unique + p_collision:  # 10% - Collision Map
-            self._initialize_collision_map(P_in, P_out)
-        else:                       # 10% - Truncation Map
-            self._initialize_truncate_map(P_in, P_out)
+        for i in range(len(inputTensors)):
+            P_in = Ps_in[i]
+            P_out = Ps_out[i]
+            routing_map = np.zeros(P_in, dtype=int)
+            for p in range(P_in):
+                p_destination = random.choice(range(P_out))
+                if p_destination in routing_map: # Duplicate
+                    if random.random() < p_correct: # 50% chance to try to correct duplicate
+                        p_destination = random.choice(range(P_out))
+                routing_map[p] = p_destination
+            self.routing_maps.append(routing_map)
 
         self.initialized = True
 
-    def _initialize_unique_map(self, P_in, P_out):
-        """Assigns each input position to a unique output position."""
-        if P_in > P_out:
-            # Truncate (take first P_out)
-            self.routing_map = np.arange(P_out)
-        else:
-            # Pad with zeros (duplicates last element)
-            self.routing_map = np.zeros(P_out, dtype=int)
-            self.routing_map[:P_in] = np.arange(P_in)
-
-    def _initialize_collision_map(self, P_in, P_out):
-        """Maps multiple input positions to the same output position."""
-        self.routing_map = np.zeros(P_out, dtype=int)
-        for i in range(P_out):
-            # For each output position, randomly pick an input position to copy from
-            self.routing_map[i] = random.randint(0, P_in - 1)
-
-    def _initialize_truncate_map(self, P_in, P_out):
-        """Truncates the input sequence (drops the end)."""
-        self.routing_map = np.arange(P_out)
         
     def forward(self, inputTensors):
         X = inputTensors[0]
@@ -76,16 +55,13 @@ class Reindex(Module):
 
         # Deterministic initialization on first run
         if not self.initialized:
-            # Decision: 80% Unique, 10% Collision, 10% Truncation
-            # Try to make P_out = P_in initially, but allow deviation.
-            if random.random() < 0.8:
-                P_out = P_in
-            elif random.random() < 0.5:
-                P_out = P_in + random.randint(1, 3)
-            else:
-                P_out = max(1, P_in - random.randint(1, 3))
-                
-            self.initialize_routing(P_out)
+            Ps_out_size = max(1, len(inputTensors) + int(random.gauss(0, 1.33)))
+            Ps_out = []
+            for _ in range(Ps_out_size):
+                Ps_out.append(max(1, P_in + int(random.gauss(0, 1.33))))
+            self.ps_out = Ps_out
+
+            self.initialize_routing(inputTensors, Ps_out)
             self.initialized = True
             
         P_out = len(self.routing_map)
