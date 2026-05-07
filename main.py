@@ -206,7 +206,7 @@ def test_fight_viz():
     print("Saved to fight_viz_test.png")
     
 
-arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+arena = Arena(n_fights=10, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
 arena.get_learnability_and_delays_data(verbose=True)
 '''
 generator = Generator(generation_type="agnostic")

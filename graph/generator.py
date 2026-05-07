@@ -21,7 +21,7 @@ class Generator:
     def __init__(self, generation_type = "agnostic", module_types = "Unified"):
         self.generation_type = generation_type
         if module_types == "Unified":
-            self.available_modules = [EinsteinAggregator, LearnableParameter, Constant]
+            self.available_modules = [EinsteinAggregator, Activation,LearnableParameter, Constant]
         elif module_types == "Rich":
             self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
                                    Split, Pooling, Transpose,SoftMax, Shift, Accumulator, EMA]

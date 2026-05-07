@@ -28,7 +28,7 @@ from graph.generator import *
 class Arena:
     def __init__(self, n_fights=1, architecture_size=16, arena_contestants=3, dataset_size = 256+64,
                   train_test_split= 0.7, generation_type="agnostic", verbose=True, report=False, pcp=0.38,
-                    cpu=False, simp_bal=0.36, speed_bal=0.3, simp_opp_bal=0.2293):
+                    cpu=False, simp_bal=0.36, speed_bal=0.3, simp_opp_bal=0.2293, modules = "Unified"):
         self.arena_contestants = arena_contestants
         self.tournament = []
         self.n_fights = n_fights
@@ -42,10 +42,16 @@ class Arena:
         self.pcp = pcp # parameter complexity penalty exponent
         self.cpu = cpu
         self.simp_bal = 0 # simplicity didn't show any advantage
-        self.avg_learn = 0.2197 # estimated over 340 runs, error +- 0.0043
-        self.std_learn = 0.7371 # estimated over 340 runs, error +- 0.0067
-        self.avg_speed = -1.8779 # estimated over 340 runs, error +- 0.0093
-        self.std_speed = 1.3691 # estimated over 340 runs, error +- 0.0124
+        if modules == "Unified":
+            self.avg_learn = 0.8228 # estimated over 256 runs, error +- 0.0043
+            self.std_learn = 1.1623 # estimated over 256 runs, error +- 0.0067
+            self.avg_speed = -1.3909 # estimated over 256 runs, error +- 0.0093
+            self.std_speed = 0.9667 # estimated over 256 runs, error +- 0.0124
+        else : 
+            self.avg_learn = 0.2197 # estimated over 340 runs, error +- 0.0043
+            self.std_learn = 0.7371 # estimated over 340 runs, error +- 0.0067
+            self.avg_speed = -1.8779 # estimated over 340 runs, error +- 0.0093
+            self.std_speed = 1.3691 # estimated over 340 runs, error +- 0.0124
         self.avg_simp = self.avg_learn   # exact
         self.std_simp = self.std_learn   # approximation, close enough in practice
         
