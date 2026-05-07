@@ -207,6 +207,7 @@ def test_fight_viz():
     
 
 arena = Arena(n_fights=48, architecture_size=12, arena_contestants=3, dataset_size=512, train_test_split=0.7, generation_type="agnostic", verbose=False, report=False)
+arena.get_learnability_and_delays_data(verbose=True)
 '''
 generator = Generator(generation_type="agnostic")
 rnd_archs = [generator.generate(12) for _ in range(48)]
@@ -214,5 +215,6 @@ small_mlp = arena.make_mlp([8,16])
 big_mlp = arena.make_mlp([64,64,64])
 archs = rnd_archs + [small_mlp, big_mlp]
 arena.test_real_correlation(archs,n_archs_test=20, verbose=True)
-'''
+
 arena.corr_data_processing()
+'''

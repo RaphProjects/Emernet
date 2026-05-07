@@ -1,3 +1,4 @@
+from modules.learnable import LearnableParameter
 import random
 import networkx
 import torch
@@ -13,10 +14,16 @@ from modules.structural import *
 from modules.pooling import *
 from modules.softmax import *
 from modules.memory import *
+from modules.einsteinAggregator import *
+from modules.constant import *
+
 class Generator:
-    def __init__(self, generation_type = "agnostic"):
+    def __init__(self, generation_type = "agnostic", module_types = "Unified"):
         self.generation_type = generation_type
-        self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
+        if module_types == "Unified":
+            self.available_modules = [EinsteinAggregator, LearnableParameter, Constant]
+        elif module_types == "Rich":
+            self.available_modules = [MatMul, Add, Activation, LearnableParameter, Normalizer, Mult, Concat,
                                    Split, Pooling, Transpose,SoftMax, Shift, Accumulator, EMA]
     
     def _is_nonlinear(self, executor, shape=(15, 18), min_threshold=1e-5, max_threshold=1e9):
