@@ -1,0 +1,26 @@
+{
+  "Unified": {
+    "avg_learn": 0.0153,
+    "std_learn": 0.5191,
+    "avg_speed": -1.2026,
+    "std_speed": 0.8203,
+    "avg_simp": 0.0153,
+    "std_simp": 0.2959
+  },
+  "Rich": {
+    "avg_learn": 0.2,
+    "std_learn": 0.7371,
+    "avg_speed": -1.8779,
+    "std_speed": 1.2,
+    "avg_simp": 0.2197,
+    "std_simp": 0.7371
+  },
+  "All": {
+    "avg_learn": 0.0293,
+    "std_learn": 0.2032,
+    "avg_speed": -1.4968,
+    "std_speed": 0.9224,
+    "avg_simp": 0.0293,
+    "std_simp": 0.1934
+  }
+}

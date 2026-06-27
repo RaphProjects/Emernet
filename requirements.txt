@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+networkx
+numpy
+torch
+torchvision
+scikit-learn
+scipy
+matplotlib
+pillow
+lightgbm
